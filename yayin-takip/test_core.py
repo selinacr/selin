@@ -168,6 +168,31 @@ def test_veritabani():
     db.kapat()
 
 
+def test_eski_semadan_goc():
+    """Onceki surumun veritabani dosyasi acildiginda uygulama calismaya devam eder."""
+    import sqlite3
+    klasor = tempfile.mkdtemp()
+    yol = os.path.join(klasor, "eski.db")
+    baglanti = sqlite3.connect(yol)
+    baglanti.executescript("""
+        CREATE TABLE kayitlar (id INTEGER PRIMARY KEY, kisi TEXT, net REAL, imza TEXT UNIQUE);
+        CREATE TABLE aktarimlar (id INTEGER PRIMARY KEY, dosya TEXT, sayfa TEXT, mod TEXT,
+            eklenen INT, atlanan INT, silinen INT, hatali INT, zaman TEXT);
+    """)
+    baglanti.commit()
+    baglanti.close()
+
+    db = core.Veritabani(yol)
+    dosya = ornek_veri.uret(os.path.join(klasor, "temmuz.xlsx"), 2026, 7)
+    (yil, ay), yayinlar, _, _ = core.dosyayi_ayristir(dosya)
+    sonuc = db.aktar(yayinlar, yil, ay, dosya)          # eski 'aktarimlar' tablosu yuzunden patlardi
+    esit(sonuc["eklenen"], len(yayinlar), "goc sonrasi aktarim")
+    esit(db.genel_ozet()["kayit"], len(yayinlar), "goc sonrasi kayit")
+    esit(len(db.son_aktarimlar()), 1, "aktarim gunlugu")
+    db.kapat()
+    core.Veritabani(yol).kapat()                        # ikinci acilis da sorunsuz
+
+
 if __name__ == "__main__":
     for ad, islev in sorted(globals().items()):
         if ad.startswith("test_"):

@@ -425,7 +425,37 @@ class Veritabani:
             os.makedirs(klasor, exist_ok=True)
         self.baglanti = sqlite3.connect(yol)
         self.baglanti.row_factory = sqlite3.Row
+        self._goc()
         self.baglanti.executescript(SEMA)
+        self.baglanti.commit()
+
+    # -- sema gocu --------------------------------------------------------- #
+
+    def _sutunlar(self, tablo: str):
+        return [s["name"] for s in self.baglanti.execute(f"PRAGMA table_info({tablo})")]
+
+    def _goc(self):
+        """Eski surumlerden kalan tablolari yeni semaya uyarlar.
+
+        'aktarimlar' sadece kayit gunlugudur; eksik sutun varsa yeniden
+        olusturulur. 'yayinlar' eksikse veri kaybetmemek icin yeniden
+        adlandirilir ve bos tablo kurulur (dosyalari tekrar yuklemek yeter).
+        """
+        beklenen = {
+            "aktarimlar": {"dosya", "sayfa", "yil", "ay", "eklenen", "silinen",
+                           "atlanan", "zaman"},
+            "yayinlar": {"kisi", "yil", "ay", "tutar", "para_birimi", "usd_karsiligi",
+                         "onayli", "imza"},
+        }
+        damga = datetime.now().strftime("%Y%m%d%H%M%S")
+        for tablo, sutunlar in beklenen.items():
+            mevcut = set(self._sutunlar(tablo))
+            if not mevcut or sutunlar <= mevcut:
+                continue
+            if tablo == "aktarimlar":
+                self.baglanti.execute("DROP TABLE aktarimlar")
+            else:
+                self.baglanti.execute(f"ALTER TABLE {tablo} RENAME TO {tablo}_eski_{damga}")
         self.baglanti.commit()
 
     def kapat(self):
