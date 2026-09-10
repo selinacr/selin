@@ -253,10 +253,10 @@
   </div>
   <p class="kucuk-not" id="cekmeceOzet"></p>
   <div class="satir">
-    <label class="kucuk-not" for="kuralSecimi">Bu kişinin ödemeleri her zaman</label>
+    <label class="kucuk-not" for="kuralSecimi">Satırda not yoksa bu kişinin para birimi</label>
     <select id="kuralSecimi"></select>
-    <span class="kucuk-not">para biriminde</span>
   </div>
+  <p class="kucuk-not" id="varyantNotu"></p>
   <div class="satir" id="birlestirSatiri">
     <label class="kucuk-not" for="birlestirSecimi">Aynı kişi başka bir adla da geçiyorsa birleştir</label>
     <select id="birlestirSecimi"></select>
@@ -374,21 +374,57 @@
   const donemAnahtari = (yil, ay) => `${yil}-${String(ay).padStart(2, "0")}`;
   const donemEtiketi = (yil, ay) => `${AY_ADLARI[ay - 1]} ${yil}`;
 
-  function paraBirimiCoz(kontrol, kisi, kurallar, odemeMetni = "") {
+  /** Kural sözlüğünü sadeleştirilmiş adla aranabilir hale getirir. */
+  function kuralHaritasi(kurallar) {
+    return new Map(Object.entries(kurallar || {}).map(([ad, birim]) => [sade(ad), birim]));
+  }
+
+  /** Öncelik: satırdaki Kontrol notu > ödeme hücresindeki birim > kişi kuralı > USD. */
+  function paraBirimiCoz(kontrol, kisiKurali, odemeMetni = "") {
     const not = sade(kontrol);
     const parite = String(kontrol ?? "").match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)/);
     const usdKarsiligi = parite ? sayiyaCevir(parite[1]) : null;
-    const zorlanan = kurallar[temizAd(kisi)];
-    if (zorlanan) return { paraBirimi: zorlanan, usdKarsiligi };
     if (/\b(cny|yuan|yuani|rmb|cin)\b/.test(not)) return { paraBirimi: "CNY", usdKarsiligi };
     if (not.includes("eur") || not.includes("parite") || not.includes("paraite")) {
       return { paraBirimi: "EUR", usdKarsiligi };
     }
-    const ek = String(odemeMetni ?? "");
-    if (/eur|€/i.test(ek)) return { paraBirimi: "EUR", usdKarsiligi };
-    if (/cny|yuan|¥/i.test(ek)) return { paraBirimi: "CNY", usdKarsiligi };
-    if (/\b(try|tl)\b|₺/i.test(ek)) return { paraBirimi: "TRY", usdKarsiligi };
+    const nottanBirim = dovizCoz(kontrol);
+    if (nottanBirim) return { paraBirimi: nottanBirim, usdKarsiligi };
+    const odemedenBirim = dovizCoz(odemeMetni);
+    if (odemedenBirim) return { paraBirimi: odemedenBirim, usdKarsiligi };
+    if (kisiKurali) return { paraBirimi: kisiKurali, usdKarsiligi };
     return { paraBirimi: "USD", usdKarsiligi };
+  }
+
+  const DOVIZ_KALIPLARI = [
+    [/(cin|çin)\s*yuan|yuan|cny|rmb|renminbi/i, "CNY"],
+    [/eur|euro|avro/i, "EUR"],
+    [/usd|dolar|dollar/i, "USD"],
+    [/\b(tl|try)\b|lira/i, "TRY"],
+    [/gbp|sterlin/i, "GBP"],
+  ];
+
+  const dovizCoz = (metin) => {
+    const yazi = String(metin ?? "");
+    for (const [kalip, birim] of DOVIZ_KALIPLARI) if (kalip.test(yazi)) return birim;
+    return null;
+  };
+
+  /** İki ad arasında en fazla bir harf fark var mı? (yazım hatalarını eşlemek için) */
+  function birHarfFarki(a, b) {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    if (a === b) return true;
+    let i = 0, j = 0, fark = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i += 1; j += 1; continue; }
+      fark += 1;
+      if (fark > 1) return false;
+      if (a.length > b.length) i += 1;
+      else if (a.length < b.length) j += 1;
+      else { i += 1; j += 1; }
+    }
+    if (i < a.length || j < b.length) fark += 1;
+    return fark <= 1;
   }
 
   const bicimci = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 });
@@ -477,6 +513,7 @@
 
     const kayitlar = [];
     const ozet = {};
+    const paraTercihleri = {};
     let harita = {};
     let kisi = "";
     let ozetBolumu = false;
@@ -488,12 +525,20 @@
       if (!dolu.length) return;
       const birlesik = sade(dolu.join(" "));
 
-      if (birlesik.includes("ozet") || birlesik.includes("summary")) { ozetBolumu = true; return; }
+      const ozetBasligi = birlesik.includes("ozet") || birlesik.includes("summary")
+        || (birlesik.includes("ad soyad")
+            && (birlesik.includes("doviz") || birlesik.includes("toplam")));
+      if (ozetBasligi) { ozetBolumu = true; return; }
       if (ozetBolumu) {
-        if (dolu.length >= 2) {
-          const tutar = sayiyaCevir(dolu[dolu.length - 1]);
-          const ad = temizAd(dolu[dolu.length - 2]);
-          if (tutar !== null && ad && !["adjunct", "toplam odeme"].includes(sade(ad))) ozet[ad] = tutar;
+        // Dosya sonundaki özet / döviz tablosu: kişi, toplam tutar, para birimi
+        const atlanacak = ["adjunct", "toplam odeme", "toplam miktar", "doviz cinsi", "ad soyad"];
+        const ad = dolu.find((m) => /\p{L}/u.test(m) && !atlanacak.includes(sade(m))
+          && !dovizCoz(m));
+        if (ad) {
+          const tutar = dolu.map(sayiyaCevir).find((v) => v !== null && v !== undefined);
+          const doviz = dolu.map(dovizCoz).find(Boolean);
+          if (tutar !== undefined && tutar !== null) ozet[temizAd(ad)] = tutar;
+          if (doviz) paraTercihleri[temizAd(ad)] = doviz;
         }
         return;
       }
@@ -573,7 +618,11 @@
           + "(satırlar esas alındı).");
       }
     }
-    return { donem, kayitlar, ozet, uyarilar };
+    if (Object.keys(paraTercihleri).length) {
+      uyarilar.push(`Dosyadaki döviz tablosundan ${Object.keys(paraTercihleri).length} kişi için `
+        + "para birimi okundu; kaydedince kural olarak uygulanacak.");
+    }
+    return { donem, kayitlar, ozet, paraTercihleri, uyarilar };
   }
 
   /* ------------------------------------------------------------------ */
@@ -584,6 +633,7 @@
     aylar: new Map(),        // "2026-08" -> {yil, ay, dosya, yuklenme, kayitlar}
     kurallar: {},            // kişi -> para birimi
     adlar: {},               // sadeleştirilmiş ad -> gösterilecek ad (birleştirme)
+    varyantlar: new Map(),   // gösterilen ad -> dosyalardaki yazımlar
     demo: false,
     db: null,
     yil: "tumu",
@@ -618,31 +668,68 @@
 
   /** Aynı kişinin farklı yazımlarını ("ALIBAKHSHIKENARI" / "Alibakhshikenari") tek ada indirir. */
   function adSozlugu() {
-    const sayimlar = new Map();
+    const sayimlar = new Map();          // sadeleştirilmiş ad -> {yazım -> adet}
     for (const ay of durum.aylar.values()) {
       for (const kayit of ay.kayitlar) {
         const anahtar = adAnahtari(kayit.kisi);
+        if (!anahtar) continue;
         if (!sayimlar.has(anahtar)) sayimlar.set(anahtar, new Map());
         const varyantlar = sayimlar.get(anahtar);
         const ad = temizAd(kayit.kisi);
         varyantlar.set(ad, (varyantlar.get(ad) || 0) + 1);
       }
     }
-    const sozluk = new Map();
-    for (const [anahtar, varyantlar] of sayimlar) {
-      const [enSik] = [...varyantlar.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
-      sozluk.set(anahtar, durum.adlar[anahtar] || enSik[0]);
+    const toplamlar = [...sayimlar.entries()]
+      .map(([anahtar, varyantlar]) => [anahtar, [...varyantlar.values()].reduce((t, s) => t + s, 0)])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+    // "Vladamir Simic" ↔ "Vladimir Simic": tek harflik yazım farkları aynı kişidir
+    const hedefler = new Map();
+    for (const [anahtar] of toplamlar) {
+      let hedef = anahtar;
+      for (const [aday] of toplamlar) {
+        if (aday === anahtar) break;                     // yalnız daha sık geçen adlara bak
+        if (hedefler.get(aday) !== aday) continue;
+        if (Math.min(aday.length, anahtar.length) >= 8 && birHarfFarki(aday, anahtar)) {
+          hedef = aday;
+          break;
+        }
+      }
+      hedefler.set(anahtar, hedef);
     }
+
+    const gruplar = new Map();           // hedef anahtar -> {yazım -> adet}
+    for (const [anahtar, varyantlar] of sayimlar) {
+      const hedef = hedefler.get(anahtar) || anahtar;
+      if (!gruplar.has(hedef)) gruplar.set(hedef, new Map());
+      const havuz = gruplar.get(hedef);
+      for (const [ad, adet] of varyantlar) havuz.set(ad, (havuz.get(ad) || 0) + adet);
+    }
+
+    const sozluk = new Map();            // her yazım -> gösterilecek ad
+    const varyantSozlugu = new Map();    // gösterilecek ad -> yazımlar
+    for (const [hedef, varyantlar] of gruplar) {
+      const [enSik] = [...varyantlar.entries()]
+        .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
+      const gosterilen = durum.adlar[hedef] || durum.adlar[adAnahtari(enSik[0])] || enSik[0];
+      varyantSozlugu.set(gosterilen, [...new Set([...(varyantSozlugu.get(gosterilen) || []),
+        ...varyantlar.keys()])]);
+      for (const [anahtar, h] of hedefler) if (h === hedef) sozluk.set(anahtar, gosterilen);
+    }
+    sozluk.varyantlar = varyantSozlugu;
     return sozluk;
   }
 
   function tumKayitlar() {
     const sozluk = adSozlugu();
+    const kurallar = kuralHaritasi(durum.kurallar);
+    durum.varyantlar = sozluk.varyantlar;
     const sonuc = [];
     for (const ay of durum.aylar.values()) {
       for (const kayit of ay.kayitlar) {
         const kisi = sozluk.get(adAnahtari(kayit.kisi)) || temizAd(kayit.kisi);
-        const { paraBirimi, usdKarsiligi } = paraBirimiCoz(kayit.kontrol, kisi, durum.kurallar,
+        const zorlanan = kurallar.get(sade(kisi)) || kurallar.get(sade(kayit.kisi));
+        const { paraBirimi, usdKarsiligi } = paraBirimiCoz(kayit.kontrol, zorlanan,
           kayit.odemeMetni);
         sonuc.push({
           ...kayit,
@@ -1035,6 +1122,11 @@
     birlestir.onchange = () => adBirlestir(kisi, birlestir.value);
     birlestirSatiri.hidden = digerAdlar.length === 0;
 
+    const varyantlar = (durum.varyantlar && durum.varyantlar.get(kisi)) || [];
+    $("varyantNotu").textContent = varyantlar.length > 1
+      ? `Bu ad şu yazımları birleştiriyor: ${varyantlar.join(" · ")}`
+      : "";
+
     const icerik = $("cekmeceIcerik");
     icerik.textContent = "";
     const donemler = [...new Set(kayitlar.map((k) => k.donem))].sort().reverse();
@@ -1261,8 +1353,8 @@
       const paralar = {};
       for (const kayit of sonuc.kayitlar) {
         if (!kayit.tutar) continue;
-        const { paraBirimi } = paraBirimiCoz(kayit.kontrol, kayit.kisi, durum.kurallar,
-          kayit.odemeMetni);
+        const { paraBirimi } = paraBirimiCoz(kayit.kontrol,
+          kuralHaritasi(durum.kurallar).get(sade(kayit.kisi)), kayit.odemeMetni);
         paralar[paraBirimi] = (paralar[paraBirimi] || 0) + kayit.tutar;
       }
       const odemeli = sonuc.kayitlar.filter((k) => (k.tutar || 0) > 0).length;
@@ -1289,6 +1381,15 @@
     const vardi = durum.aylar.has(anahtar);
     try {
       await ayKaydet(yil, ay, durum.bekleyen.kayitlar, durum.bekleyen.dosyaAdi);
+      const tercihler = durum.bekleyen.paraTercihleri || {};
+      if (Object.keys(tercihler).length) {
+        const kurallar = { ...durum.kurallar, ...tercihler };
+        durum.kurallar = kurallar;
+        if (durum.db) await durum.db.doc("ayarlar/kurallar").set(kurallar);
+        else yereleYaz();
+        gunlugeYaz("Para birimi kuralları güncellendi: "
+          + Object.entries(tercihler).map(([ad, birim]) => `${ad} → ${birim}`).join(", "));
+      }
       gunlugeYaz(`${donemEtiketi(yil, ay)} kaydedildi (${durum.bekleyen.kayitlar.length} kayıt`
         + `${vardi ? ", önceki veri değiştirildi" : ""}).`);
       bilgiVer(`${donemEtiketi(yil, ay)} kaydedildi.`);
