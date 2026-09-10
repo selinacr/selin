@@ -31,8 +31,8 @@ from openpyxl.utils import get_column_letter
 VARSAYILAN_DB = os.path.join(os.path.expanduser("~"), "yayin_takip.db")
 
 AY_ADLARI = [
-    "Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran",
-    "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik",
+    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
 ]
 
 PARA_BIRIMLERI = ["USD", "EUR", "CNY", "TRY", "GBP"]
@@ -645,7 +645,7 @@ class Veritabani:
                           for yil_ in yillar]
             satirlar.append([ad] + degerler_ + yil_toplam + [sum(degerler_)])
         satirlar.sort(key=lambda r: r[-1], reverse=True)
-        etiket = {"kisi": "Kisi", "quartile": "Quartile",
+        etiket = {"kisi": "Kişi", "quartile": "Quartile",
                   "dergi": "Dergi", "para_birimi": "Para birimi"}[satir_alani]
         basliklar = ([etiket] + [f"{AY_ADLARI[a-1]} {y}" for y, a in donemler]
                      + [str(y) for y in yillar] + ["Toplam"])

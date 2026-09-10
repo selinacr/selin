@@ -60,7 +60,7 @@ def test_yardimcilar():
     esit(core.donem_coz("AĞUSTOS 2026 Yayınları"), (2026, 8), "baslikta donem")
     esit(core.donem_coz("Ağustos Yayınları_Adjunct (3).xlsx"), None, "yilsiz baslik")
     esit(core.donem_coz("2026-05 raporu"), (2026, 5), "sayisal donem")
-    esit(core.donem_etiketi(2026, 8), "Agustos 2026", "donem etiketi")
+    esit(core.donem_etiketi(2026, 8), "Ağustos 2026", "donem etiketi")
 
 
 def test_para_birimi():

@@ -62,26 +62,32 @@ OZET / SUMMARY                                      <- kisi bazinda toplamlar
 
 ## Kullanim
 
-1. **Ayin Excel'ini yukle**: dosyayi sec, donemi dogrula, onizlemeyi kontrol et,
-   "Veritabanina aktar". Ayni ay tekrar yuklenirse o ayin verisi silinip
-   yeniden yazilir (mukerrer kayit olusmaz).
-2. **Kisi bazinda**: kisi x ay pivotu veya toplam ozet. Olcu secilebilir:
-   odeme tutari, USD karsiligi, kayit sayisi, odemeli yayin sayisi. Filtreler:
-   yil, ay, para birimi, sadece odemesi olanlar, serbest arama. Kisiye cift
-   tiklayinca yillik/aylik dokum ve para birimi kurali acilir.
-3. **Odeme bazinda**: para birimi, odeme tutari (500/450/400...), quartile ve
-   dergi kirilimlari; quartile x ay pivotu.
-4. **Aylik / yillik**: donem serisi ve yil toplamlari, kisi filtresiyle.
-5. **Kayitlar**: ham satirlar, arama, secili donemi silme.
+Uygulama tek ekrandir:
 
-Her sekmedeki tablo "Excel'e aktar" ile bicimli bir rapora yazilir.
+- **Ust satir**: donem araligi ve ozet kutulari (onayli yayin sayisi, para birimi
+  bazinda toplamlar, USD karsiligi). Kutular secili filtrelere gore guncellenir.
+- **Filtre dugmeleri**: yil (Tumu / 2025 / 2026...), olcu (Odeme tutari,
+  USD karsiligi, Onayli yayin, Tum kayitlar) ve para birimi (USD / EUR / CNY).
+  Para birimi yalnizca "Odeme tutari" olcusunde etkindir.
+- **Gorunumler**: Kisi x ay, Quartile x ay, Dergi, Odeme dagilimi, Kayitlar.
+  Pivot tablolarda ay sutunlarindan sonra yil toplamlari ve genel toplam,
+  en altta da "Toplam" satiri gelir.
+- **Kisiye cift tiklamak** yillik/aylik dokumu ve para birimi kuralini acar.
+- **Ara** kutusu kisi, baslik, dergi, DOI, yazar ve Kontrol notunda arar;
+  "Sadece odemesi olanlar" kutusu odemesiz kayitlari gizler.
+- **Excel'e aktar** o an ekranda gorunen tabloyu bicimli olarak kaydeder.
+- **Yeni ay dosyasi yukle** (alt bar) dosyayi cozer, onizleme ve uyarilari
+  gosterir, onaylayinca veritabanina yazar. Ayni ay tekrar yuklenirse o ayin
+  verisi silinip yeniden yazilir.
 
 ## Dosyalar
 
 | Dosya | Icerik |
 |---|---|
 | `core.py` | Excel ayristirma, para birimi cozumu, SQLite depo, ozet/pivot sorgulari |
-| `app.py` | tkinter arayuzu |
+| `app.py` | panel arayuzu (ana ekran, ice aktarma ve kisi detay pencereleri) |
+| `arayuz.py` | renk paleti, ttk stilleri ve tablo yardimcilari |
+| `kisayol_olustur.py` | masaustu kisayolu olusturur (Windows) |
 | `ornek_veri.py` | ayni duzende ornek ay dosyasi ureteci |
 | `test_core.py` | cekirdek testleri (`python test_core.py`) |
 
