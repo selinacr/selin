@@ -257,6 +257,10 @@
     <select id="kuralSecimi"></select>
     <span class="kucuk-not">para biriminde</span>
   </div>
+  <div class="satir" id="birlestirSatiri">
+    <label class="kucuk-not" for="birlestirSecimi">Aynı kişi başka bir adla da geçiyorsa birleştir</label>
+    <select id="birlestirSecimi"></select>
+  </div>
   <div id="cekmeceIcerik"></div>
 </aside>
 <div class="bilgi" id="bilgiBaloncugu" role="status" aria-live="polite"></div>
@@ -276,17 +280,21 @@
     aralik: 12, ara: 12, december: 12, dec: 12,
   };
   const SUTUN_ANAHTARLARI = {
-    sira: ["sira", "no"],
-    baslik: ["article title", "title", "baslik", "makale", "yayin adi", "eser"],
+    sira: ["sira", "no", "#"],
+    baslik: ["article title", "title", "baslik", "makale adi", "makale", "yayin adi", "eser"],
     dergi: ["journal", "conference", "dergi"],
     yazarlar: ["authors", "author", "yazar"],
-    doi: ["doi"],
-    quartile: ["quartile", "quartil", "q index"],
+    doi: ["doi", "doi link"],
+    quartile: ["quartile", "quartil", "quarter", "q index"],
     tarih: ["date", "tarih"],
     indexLink: ["index link", "index", "link", "scopus", "wos"],
     kontrol: ["kontrol", "note", "not", "aciklama"],
-    odeme: ["payments", "payment", "odeme", "tutar", "ucret"],
+    odeme: ["payments", "payment", "odeme", "tesvik miktari", "tesvik mitari", "tesvik",
+            "tutar", "ucret"],
   };
+  // "STAFF | Ad Soyad" gibi satırlarda ilk hücrede duran etiketler
+  const KISI_ETIKETLERI = new Set(["staff", "adjunct", "kisi", "personel", "ad soyad",
+    "isim", "hoca", "name", "ogretim uyesi"]);
   const PARA_BIRIMLERI = ["USD", "EUR", "CNY", "TRY", "GBP"];
   const OLCULER = [
     ["tutar", "Ödeme tutarı"],
@@ -366,7 +374,7 @@
   const donemAnahtari = (yil, ay) => `${yil}-${String(ay).padStart(2, "0")}`;
   const donemEtiketi = (yil, ay) => `${AY_ADLARI[ay - 1]} ${yil}`;
 
-  function paraBirimiCoz(kontrol, kisi, kurallar) {
+  function paraBirimiCoz(kontrol, kisi, kurallar, odemeMetni = "") {
     const not = sade(kontrol);
     const parite = String(kontrol ?? "").match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)/);
     const usdKarsiligi = parite ? sayiyaCevir(parite[1]) : null;
@@ -376,6 +384,10 @@
     if (not.includes("eur") || not.includes("parite") || not.includes("paraite")) {
       return { paraBirimi: "EUR", usdKarsiligi };
     }
+    const ek = String(odemeMetni ?? "");
+    if (/eur|€/i.test(ek)) return { paraBirimi: "EUR", usdKarsiligi };
+    if (/cny|yuan|¥/i.test(ek)) return { paraBirimi: "CNY", usdKarsiligi };
+    if (/\b(try|tl)\b|₺/i.test(ek)) return { paraBirimi: "TRY", usdKarsiligi };
     return { paraBirimi: "USD", usdKarsiligi };
   }
 
@@ -387,20 +399,55 @@
   /* Excel ayrıştırma                                                    */
   /* ------------------------------------------------------------------ */
 
+  /** Bir hücre başlığı hangi alana denk geliyor? (yalnız kısa hücreler başlık sayılır) */
+  function baslikAlani(hucre) {
+    const metin = String(hucre ?? "").trim();
+    if (!metin || metin.length > 30) return null;
+    if (metin === "#") return "sira";
+    const duz = sade(metin);
+    if (!duz) return null;
+    for (const [alan, anahtarlar] of Object.entries(SUTUN_ANAHTARLARI)) {
+      for (const anahtar of anahtarlar) {
+        const s = sade(anahtar);
+        if (s && (duz === s || duz.startsWith(s) || duz.includes(s))) return alan;
+      }
+    }
+    return null;
+  }
+
   function sutunHaritasi(satir) {
     const harita = {};
     satir.forEach((hucre, i) => {
-      const duz = sade(hucre);
-      if (!duz) return;
-      for (const [alan, anahtarlar] of Object.entries(SUTUN_ANAHTARLARI)) {
-        if (alan in harita) continue;
-        if (anahtarlar.some((a) => { const s = sade(a); return duz === s || duz.startsWith(s) || duz.includes(s); })) {
-          harita[alan] = i;
-          break;
-        }
-      }
+      const alan = baslikAlani(hucre);
+      if (alan && !(alan in harita)) harita[alan] = i;
     });
     return harita;
+  }
+
+  /** Satır bir tablo başlığı mı? En az üç bilinen sütun adı taşıması gerekir. */
+  function baslikSatiriMi(metinler) {
+    const ilkDolu = metinler.find((m) => m);
+    if (ilkDolu && /^\d+$/.test(ilkDolu.trim())) return false;   // "1" ile başlayan satır veridir
+    const alanlar = new Set(metinler.map(baslikAlani).filter(Boolean));
+    return alanlar.size >= 3;
+  }
+
+  /** Ödeme sütunu yoksa satırın sonundaki "500 USD" gibi hücreyi ödeme kabul et. */
+  function odemeyiBul(satir, harita) {
+    if (harita.odeme !== undefined) {
+      const ham = satir[harita.odeme];
+      return { tutar: sayiyaCevir(ham), metin: ham === null || ham === undefined ? "" : String(ham) };
+    }
+    for (let i = satir.length - 1; i >= 0; i -= 1) {
+      const hucre = satir[i];
+      if (hucre === null || hucre === undefined || String(hucre).trim() === "") continue;
+      const metin = String(hucre).trim();
+      if (/^[\d.,\s]*\d[\d.,\s]*(usd|eur|cny|try|tl|₺|\$|€|¥)?$/i.test(metin)) {
+        return { tutar: sayiyaCevir(metin), metin };
+      }
+      break;   // sondaki ilk dolu hücre tutar değilse bu satırda ödeme yok
+    }
+    return { tutar: null, metin: "" };
   }
 
   const hucreMetni = (satir, harita, alan) => {
@@ -451,15 +498,22 @@
         return;
       }
 
-      const ilk = sade(metinler[0] || "");
-      if (ilk === "sira" || ilk === "no" || (!Object.keys(harita).length && birlesik.includes("article title"))) {
+      if (baslikSatiriMi(metinler)) {          // her bölümün kendi başlığı olabilir
         harita = sutunHaritasi(metinler);
         return;
       }
       if (birlesik.includes("toplam") && dolu.length <= 3) return;
-      if (dolu.length === 1 && metinler[0]) {
-        if (donemCoz(metinler[0]) || ilk.includes("yayin")) return;   // dosya başlığı
-        kisi = temizAd(metinler[0]);
+      if (!/\p{L}/u.test(dolu.join(""))) return;                       // "," gibi artık satırlar
+
+      const harfli = dolu.filter((m) => /\p{L}/u.test(m));
+      if (dolu.length === 1 && harfli.length === 1 && dolu[0].length >= 3) {
+        if (donemCoz(dolu[0]) || sade(dolu[0]).includes("yayin")
+            || sade(dolu[0]).includes("publication")) return;           // dosya başlığı
+        kisi = temizAd(dolu[0]);
+        return;
+      }
+      if (dolu.length === 2 && KISI_ETIKETLERI.has(sade(dolu[0]))) {    // "STAFF | Ad Soyad"
+        kisi = temizAd(dolu[1]);
         return;
       }
       if (!kisi) return;
@@ -471,7 +525,7 @@
       const baslik = hucreMetni(satir, harita, "baslik");
       const doi = hucreMetni(satir, harita, "doi");
       if (!baslik && !doi) return;
-      const tutarHucresi = harita.odeme === undefined ? null : satir[harita.odeme];
+      const odeme = odemeyiBul(satir, harita);
       kayitlar.push({
         kisi,
         sira: hucreMetni(satir, harita, "sira"),
@@ -483,11 +537,33 @@
         tarih: harita.tarih === undefined ? "" : tarihMetni(satir[harita.tarih]),
         indexLink: hucreMetni(satir, harita, "indexLink"),
         kontrol: hucreMetni(satir, harita, "kontrol"),
-        tutar: sayiyaCevir(tutarHucresi),
+        tutar: odeme.tutar,
+        odemeMetni: odeme.metin,
       });
     });
 
     if (!kayitlar.length) uyarilar.push("Dosyada kayıt bulunamadı; sayfa seçimini kontrol edin.");
+    if (kayitlar.length && !kayitlar.some((k) => k.tutar)) {
+      uyarilar.push("Bu dosyada ödeme sütunu yok: yayınlar sayılır, tutarlar boş kalır.");
+    }
+    // Yalnızca dosya başlığı hücresine bak: "Haziran-Temmuz 2025" gibi iki aylık dosyaları yakala
+    const aylar = new Set();
+    let baslikHucresi = "";
+    for (const satir of satirlar.slice(0, 5)) {
+      for (const hucre of satir || []) {
+        if (donemCoz(hucre)) { baslikHucresi = String(hucre); break; }
+      }
+      if (baslikHucresi) break;
+    }
+    const baslikDuz = sade(baslikHucresi);
+    for (const [anahtar, no] of Object.entries(AY_ANAHTAR)) {
+      if (anahtar.length > 3 && new RegExp(`\\b${anahtar}`).test(baslikDuz)) aylar.add(no);
+    }
+    if (aylar.size > 1) {
+      uyarilar.push(`Dosya başlığı birden fazla ay içeriyor (${[...aylar].sort((a, b) => a - b)
+        .map((a) => AY_ADLARI[a - 1]).join("-")}). `
+        + `${donemEtiketi(donem.yil, donem.ay)} olarak kaydedilecek; gerekirse dönemi değiştir.`);
+    }
     for (const [ad, beyan] of Object.entries(ozet)) {
       const hesap = kayitlar
         .filter((k) => sade(k.kisi) === sade(ad))
@@ -507,6 +583,7 @@
   const durum = {
     aylar: new Map(),        // "2026-08" -> {yil, ay, dosya, yuklenme, kayitlar}
     kurallar: {},            // kişi -> para birimi
+    adlar: {},               // sadeleştirilmiş ad -> gösterilecek ad (birleştirme)
     demo: false,
     db: null,
     yil: "tumu",
@@ -537,13 +614,39 @@
   }
 
   /** Kayıtları para birimi kuralları uygulanmış düz listeye çevirir. */
+  const adAnahtari = (ad) => sade(ad);
+
+  /** Aynı kişinin farklı yazımlarını ("ALIBAKHSHIKENARI" / "Alibakhshikenari") tek ada indirir. */
+  function adSozlugu() {
+    const sayimlar = new Map();
+    for (const ay of durum.aylar.values()) {
+      for (const kayit of ay.kayitlar) {
+        const anahtar = adAnahtari(kayit.kisi);
+        if (!sayimlar.has(anahtar)) sayimlar.set(anahtar, new Map());
+        const varyantlar = sayimlar.get(anahtar);
+        const ad = temizAd(kayit.kisi);
+        varyantlar.set(ad, (varyantlar.get(ad) || 0) + 1);
+      }
+    }
+    const sozluk = new Map();
+    for (const [anahtar, varyantlar] of sayimlar) {
+      const [enSik] = [...varyantlar.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
+      sozluk.set(anahtar, durum.adlar[anahtar] || enSik[0]);
+    }
+    return sozluk;
+  }
+
   function tumKayitlar() {
+    const sozluk = adSozlugu();
     const sonuc = [];
     for (const ay of durum.aylar.values()) {
       for (const kayit of ay.kayitlar) {
-        const { paraBirimi, usdKarsiligi } = paraBirimiCoz(kayit.kontrol, kayit.kisi, durum.kurallar);
+        const kisi = sozluk.get(adAnahtari(kayit.kisi)) || temizAd(kayit.kisi);
+        const { paraBirimi, usdKarsiligi } = paraBirimiCoz(kayit.kontrol, kisi, durum.kurallar,
+          kayit.odemeMetni);
         sonuc.push({
           ...kayit,
+          kisi,
           yil: ay.yil,
           ay: ay.ay,
           donem: donemAnahtari(ay.yil, ay.ay),
@@ -869,7 +972,22 @@
       sil.textContent = "×";
       sil.title = `${donemEtiketi(ay.yil, ay.ay)} verisini sil`;
       sil.setAttribute("aria-label", `${donemEtiketi(ay.yil, ay.ay)} verisini sil`);
-      sil.addEventListener("click", () => aySil(anahtar));
+      let onayBekliyor = false;
+      sil.addEventListener("click", () => {
+        if (!onayBekliyor) {           // iki adımlı onay: gömülü sayfada uyarı kutusu çıkmayabiliyor
+          onayBekliyor = true;
+          sil.textContent = "sil?";
+          sil.style.color = "var(--warn)";
+          setTimeout(() => {
+            if (!onayBekliyor) return;
+            onayBekliyor = false;
+            sil.textContent = "×";
+            sil.style.color = "";
+          }, 4000);
+          return;
+        }
+        aySil(anahtar);
+      });
       etiket.append(sec, sil);
       kap.appendChild(etiket);
     }
@@ -900,6 +1018,22 @@
     }
     secim.value = durum.kurallar[temizAd(kisi)] || "";
     secim.onchange = () => kuralKaydet(kisi, secim.value);
+
+    const birlestirSatiri = $("birlestirSatiri");
+    const birlestir = $("birlestirSecimi");
+    birlestir.textContent = "";
+    const digerAdlar = [...new Set(tumKayitlar().map((k) => k.kisi))]
+      .filter((ad) => ad !== kisi).sort((a, b) => a.localeCompare(b, "tr"));
+    for (const [deger, etiket] of [["", "birleştirme yok"], ...digerAdlar.map((a) => [a, a])]) {
+      const secenek = document.createElement("option");
+      secenek.value = deger;
+      secenek.textContent = etiket;
+      birlestir.appendChild(secenek);
+    }
+    birlestir.value = durum.adlar[adAnahtari(kisi)] && durum.adlar[adAnahtari(kisi)] !== kisi
+      ? durum.adlar[adAnahtari(kisi)] : "";
+    birlestir.onchange = () => adBirlestir(kisi, birlestir.value);
+    birlestirSatiri.hidden = digerAdlar.length === 0;
 
     const icerik = $("cekmeceIcerik");
     icerik.textContent = "";
@@ -956,15 +1090,18 @@
 
   const YEREL_AY = "yayin-paneli-aylar";
   const YEREL_KURAL = "yayin-paneli-kurallar";
+  const YEREL_AD = "yayin-paneli-adlar";
 
   function yereldenOku() {
     try {
       const ham = JSON.parse(localStorage.getItem(YEREL_AY) || "[]");
       durum.aylar = new Map(ham.map((ay) => [donemAnahtari(ay.yil, ay.ay), ay]));
       durum.kurallar = JSON.parse(localStorage.getItem(YEREL_KURAL) || "{}");
+      durum.adlar = JSON.parse(localStorage.getItem(YEREL_AD) || "{}");
     } catch (hata) {
       durum.aylar = new Map();
       durum.kurallar = {};
+      durum.adlar = {};
     }
   }
 
@@ -972,6 +1109,7 @@
     try {
       localStorage.setItem(YEREL_AY, JSON.stringify([...durum.aylar.values()]));
       localStorage.setItem(YEREL_KURAL, JSON.stringify(durum.kurallar));
+      localStorage.setItem(YEREL_AD, JSON.stringify(durum.adlar));
     } catch (hata) { /* depo dolu ya da kapalı: panel yine de çalışır */ }
   }
 
@@ -1001,6 +1139,10 @@
       durum.kurallar = (anlik.exists && anlik.data()) || {};
       ciz();
     }, () => {});
+    db.doc("ayarlar/adlar").onSnapshot((anlik) => {
+      durum.adlar = (anlik.exists && anlik.data()) || {};
+      ciz();
+    }, () => {});
   }
 
   /** Yazma yetkisi olmayan (yalnız görüntüleyen) kişilere anlaşılır bir mesaj verir. */
@@ -1027,7 +1169,6 @@
   async function aySil(anahtar) {
     const ay = durum.aylar.get(anahtar);
     if (!ay) return;
-    if (!confirm(`${donemEtiketi(ay.yil, ay.ay)} verisi silinsin mi?`)) return;
     try {
       if (durum.db) {
         await durum.db.doc(`aylar/${anahtar}`).delete();
@@ -1061,6 +1202,23 @@
     ciz();
     cekmeceAc(kisi);
     bilgiVer(birim ? `${kisi} → ${birim}` : `${kisi} için kural kaldırıldı.`);
+  }
+
+  async function adBirlestir(kisi, hedef) {
+    const anahtar = adAnahtari(kisi);
+    const adlar = { ...durum.adlar };
+    if (hedef && hedef !== kisi) adlar[anahtar] = hedef; else delete adlar[anahtar];
+    durum.adlar = adlar;
+    try {
+      if (durum.db) await durum.db.doc("ayarlar/adlar").set(adlar);
+      else yereleYaz();
+    } catch (hata) {
+      bilgiVer(yazmaHatasi(hata));
+      return;
+    }
+    ciz();
+    cekmeceKapat();
+    bilgiVer(hedef ? `${kisi} → ${hedef} olarak birleştirildi.` : "Birleştirme kaldırıldı.");
   }
 
   /* ------------------------------------------------------------------ */
@@ -1103,7 +1261,8 @@
       const paralar = {};
       for (const kayit of sonuc.kayitlar) {
         if (!kayit.tutar) continue;
-        const { paraBirimi } = paraBirimiCoz(kayit.kontrol, kayit.kisi, durum.kurallar);
+        const { paraBirimi } = paraBirimiCoz(kayit.kontrol, kayit.kisi, durum.kurallar,
+          kayit.odemeMetni);
         paralar[paraBirimi] = (paralar[paraBirimi] || 0) + kayit.tutar;
       }
       const odemeli = sonuc.kayitlar.filter((k) => (k.tutar || 0) > 0).length;
