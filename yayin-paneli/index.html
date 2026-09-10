@@ -305,6 +305,7 @@
   const GORUNUMLER = [
     ["kisi", "Kişi × ay"],
     ["ozet", "Kişi özeti"],
+    ["kisiQ", "Kişi × quartile"],
     ["quartile", "Quartile × ay"],
     ["dergi", "Dergi"],
     ["dagilim", "Ödeme dağılımı"],
@@ -425,6 +426,15 @@
     }
     if (i < a.length || j < b.length) fark += 1;
     return fark <= 1;
+  }
+
+  const QUARTILELER = ["Q1", "Q2", "Q3", "Q4"];
+
+  /** "q1", "Q 2", "1" gibi yazımları Q1..Q4'e indirir; kalanlar "Diğer / boş". */
+  function quartileCoz(deger) {
+    const metin = String(deger ?? "").toUpperCase().replace(/\s+/g, "");
+    const eslesme = metin.match(/^Q?([1-4])$/);
+    return eslesme ? `Q${eslesme[1]}` : "Diğer / boş";
   }
 
   const bicimci = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 });
@@ -734,6 +744,7 @@
         sonuc.push({
           ...kayit,
           kisi,
+          q: quartileCoz(kayit.quartile),
           yil: ay.yil,
           ay: ay.ay,
           donem: donemAnahtari(ay.yil, ay.ay),
@@ -834,11 +845,19 @@
     const yillar = [...new Set([...durum.aylar.values()].map((a) => a.yil))].sort();
     chipCiz("yilGrubu", [["tumu", "Tümü"], ...yillar.map((y) => [String(y), String(y)])],
       durum.yil, (deger) => { durum.yil = deger; durum.ay = "tumu"; ciz(); });
-    chipCiz("olcuGrubu", OLCULER, durum.olcu, (deger) => { durum.olcu = deger; ciz(); });
+    const sayimGorunumu = durum.gorunum === "kisiQ";
+    chipCiz("olcuGrubu", OLCULER, sayimGorunumu ? "yayin" : durum.olcu,
+      (deger) => { durum.olcu = deger; ciz(); }, sayimGorunumu);
     const birimler = [...new Set(tumKayitlar().map((k) => k.paraBirimi))].sort();
     chipCiz("paraGrubu", [["tumu", "Tümü"], ...(birimler.length ? birimler : ["USD"]).map((b) => [b, b])],
       durum.para, (deger) => { durum.para = deger; ciz(); }, durum.olcu !== "tutar");
-    chipCiz("gorunumGrubu", GORUNUMLER, durum.gorunum, (deger) => { durum.gorunum = deger; ciz(); });
+    chipCiz("gorunumGrubu", GORUNUMLER, durum.gorunum, (deger) => {
+      // Quartile takibinde soru "kaç yayın"; para ölçüsüyle gelindiyse sayıma geç
+      if ((deger === "quartile" || deger === "kisiQ")
+          && (durum.olcu === "tutar" || durum.olcu === "usd")) durum.olcu = "yayin";
+      durum.gorunum = deger;
+      ciz();
+    });
   }
 
   function tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar = [], tiklanirSatir = false, metinSutunlari = [] }) {
@@ -924,7 +943,7 @@
     const yillar = [...new Set(donemler.map((d) => d.slice(0, 4)))].sort();
     const gruplar = new Map();
     for (const kayit of kayitlar) {
-      const anahtar = (alan === "kisi" ? kayit.kisi : kayit.quartile) || "(boş)";
+      const anahtar = alan === "kisi" ? kayit.kisi : kayit.q;
       if (!gruplar.has(anahtar)) gruplar.set(anahtar, []);
       gruplar.get(anahtar).push(kayit);
     }
@@ -967,6 +986,27 @@
     tabloYaz({ basliklar, satirlar, toplam, tiklanirSatir: true });
   }
 
+  /** Kişi bazında Q1–Q4 yayın sayıları (yıl/ay filtreleri geçerli). */
+  function kisiQuartileCiz() {
+    const kayitlar = suzulmus({ paraDahil: false });
+    const digerVar = kayitlar.some((k) => k.q === "Diğer / boş");
+    const sutunlar = digerVar ? [...QUARTILELER, "Diğer / boş"] : [...QUARTILELER];
+    const gruplar = new Map();
+    for (const kayit of kayitlar) {
+      if (!gruplar.has(kayit.kisi)) gruplar.set(kayit.kisi, []);
+      gruplar.get(kayit.kisi).push(kayit);
+    }
+    const say = (liste, q) => liste.filter((k) => k.q === q).length;
+    const basliklar = ["Kişi", ...sutunlar, "Toplam"];
+    const satirlar = [...gruplar.entries()]
+      .map(([ad, grup]) => [ad, ...sutunlar.map((q) => say(grup, q)), grup.length])
+      .sort((a, b) => b[b.length - 1] - a[a.length - 1]
+        || b[1] - a[1] || a[0].localeCompare(b[0], "tr"));
+    const toplam = ["Toplam", ...sutunlar.map((q) => say(kayitlar, q)), kayitlar.length];
+    tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar: [basliklar.length - 1],
+      tiklanirSatir: true });
+  }
+
   function kirilimCiz(alan) {
     const kayitlar = suzulmus();
     const gruplar = new Map();
@@ -1005,7 +1045,8 @@
   const GORUNUM_NOTLARI = {
     kisi: "Kişiye tıklayınca yıllık dökümü ve para birimi kuralı açılır.",
     ozet: "Para birimi sütunları ayrı ayrı toplanır; USD karşılığı hepsini tek ölçüde toplar.",
-    quartile: "Q1/Q2/Q3 kırılımı — hangi kalitede kaç yayın ödenmiş.",
+    kisiQ: "Kişi başına Q1–Q4 yayın sayısı. Yıl düğmesiyle 2025 / 2026 ayrı ayrı görülür.",
+    quartile: "Ay ve yıl bazında Q1–Q4 sayıları; sağdaki yıl sütunları o yılın toplamıdır.",
     dergi: "Dergi bazında yayın ve ödeme dağılımı.",
     dagilim: "Standart tutarlara göre dağılım (500 / 450 / 400 …) ve ödemesiz kayıtlar.",
     kayitlar: "Ham satırlar. Ödemesi olmayan kayıtlar işaretlidir.",
@@ -1017,6 +1058,7 @@
     aylariCiz();
     $("gorunumNotu").textContent = GORUNUM_NOTLARI[durum.gorunum] || "";
     if (durum.gorunum === "kisi") pivotCiz("kisi");
+    else if (durum.gorunum === "kisiQ") kisiQuartileCiz();
     else if (durum.gorunum === "quartile") pivotCiz("quartile");
     else if (durum.gorunum === "ozet") kisiOzetiCiz();
     else if (durum.gorunum === "dergi") kirilimCiz("dergi");
