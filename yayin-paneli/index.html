@@ -175,6 +175,14 @@
     box-shadow: 0 6px 22px rgba(0,0,0,0.18); display: none; }
   .bilgi[data-acik="1"] { display: block; }
   .bos-durum { padding: 34px 22px; text-align: center; color: var(--ink-soft); }
+  .form { display: flex; flex-direction: column; gap: 12px; }
+  .alan { display: flex; flex-direction: column; gap: 4px; }
+  .alan > span { color: var(--ink-soft); font-size: 12px; }
+  .alan input, .alan select {
+    background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  }
+  .alan-ikili { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  #duzenleSil:hover { background: var(--warn-soft); color: var(--warn); }
   @media (prefers-reduced-motion: no-preference) {
     .bilgi { transition: opacity .2s ease; }
   }
@@ -198,6 +206,7 @@
     </label>
     <div class="ara">
       <input type="search" id="aramaKutusu" placeholder="Kişi, makale, dergi, DOI…" aria-label="Ara">
+      <button class="dugme" id="kayitEkleDugmesi">Kayıt ekle</button>
       <button class="dugme" id="disaAktarDugmesi">CSV indir</button>
     </div>
   </section>
@@ -262,6 +271,40 @@
     <select id="birlestirSecimi"></select>
   </div>
   <div id="cekmeceIcerik"></div>
+</aside>
+<aside class="cekmece" id="duzenle" aria-label="Kayıt düzenleme">
+  <div class="satir" style="justify-content: space-between;">
+    <h2 id="duzenleBaslik">Kaydı düzenle</h2>
+    <button class="dugme sessiz" id="duzenleKapat">Kapat</button>
+  </div>
+  <p class="kucuk-not" id="duzenleNot"></p>
+  <div class="form">
+    <label class="alan"><span>Kişi</span>
+      <input id="dKisi" list="kisiListesi" autocomplete="off"></label>
+    <datalist id="kisiListesi"></datalist>
+    <div class="alan-ikili">
+      <label class="alan"><span>Dönem</span><select id="dAy"></select></label>
+      <label class="alan"><span>&nbsp;</span><select id="dYil"></select></label>
+    </div>
+    <label class="alan"><span>Makale başlığı</span><input id="dBaslik"></label>
+    <label class="alan"><span>Dergi / konferans</span><input id="dDergi"></label>
+    <div class="alan-ikili">
+      <label class="alan"><span>Quartile</span><select id="dQuartile"></select></label>
+      <label class="alan"><span>Yayın tarihi</span><input id="dTarih" placeholder="2026-08-01"></label>
+    </div>
+    <div class="alan-ikili">
+      <label class="alan"><span>Tutar</span>
+        <input id="dTutar" inputmode="decimal" placeholder="boş = ödeme yok"></label>
+      <label class="alan"><span>Para birimi</span><select id="dPara"></select></label>
+    </div>
+    <label class="alan"><span>Kontrol notu</span><input id="dKontrol"></label>
+    <label class="alan"><span>DOI</span><input id="dDoi"></label>
+    <label class="alan"><span>Yazarlar</span><input id="dYazarlar"></label>
+  </div>
+  <div class="satir" style="justify-content: space-between; margin-top: 4px;">
+    <button class="dugme ana" id="duzenleKaydet">Kaydet</button>
+    <button class="dugme" id="duzenleSil">Bu kaydı sil</button>
+  </div>
 </aside>
 <div class="bilgi" id="bilgiBaloncugu" role="status" aria-live="polite"></div>
 
@@ -736,11 +779,11 @@
     durum.varyantlar = sozluk.varyantlar;
     const sonuc = [];
     for (const ay of durum.aylar.values()) {
-      for (const kayit of ay.kayitlar) {
+      ay.kayitlar.forEach((kayit, indeks) => {
         const kisi = sozluk.get(adAnahtari(kayit.kisi)) || temizAd(kayit.kisi);
         const zorlanan = kurallar.get(sade(kisi)) || kurallar.get(sade(kayit.kisi));
-        const { paraBirimi, usdKarsiligi } = paraBirimiCoz(kayit.kontrol, zorlanan,
-          kayit.odemeMetni);
+        const cozulen = paraBirimiCoz(kayit.kontrol, zorlanan, kayit.odemeMetni);
+        const paraBirimi = kayit.paraBirimiElle || cozulen.paraBirimi;
         sonuc.push({
           ...kayit,
           kisi,
@@ -748,11 +791,12 @@
           yil: ay.yil,
           ay: ay.ay,
           donem: donemAnahtari(ay.yil, ay.ay),
+          indeks,
           paraBirimi,
-          usdKarsiligi: usdKarsiligi ?? (paraBirimi === "USD" ? kayit.tutar : null),
+          usdKarsiligi: cozulen.usdKarsiligi ?? (paraBirimi === "USD" ? kayit.tutar : null),
           onayli: (kayit.tutar || 0) > 0 ? 1 : 0,
         });
-      }
+      });
     }
     return sonuc;
   }
@@ -860,7 +904,8 @@
     });
   }
 
-  function tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar = [], tiklanirSatir = false, metinSutunlari = [] }) {
+  function tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar = [], tiklanirSatir = false,
+                      metinSutunlari = [], satirTiklama = null }) {
     const bas = $("tabloBasliklari"), govde = $("tabloGovdesi"), etek = $("tabloToplami");
     bas.textContent = ""; govde.textContent = ""; etek.textContent = "";
     const bosDurum = $("bosDurum");
@@ -888,10 +933,11 @@
 
     for (const satir of satirlar) {
       const tr = document.createElement("tr");
-      if (tiklanirSatir) {
+      if (tiklanirSatir || satirTiklama) {
+        const sira = govde.childElementCount;
         tr.className = "tiklanir";
         tr.tabIndex = 0;
-        const ac = () => cekmeceAc(String(satir[0]));
+        const ac = () => (satirTiklama ? satirTiklama(sira) : cekmeceAc(String(satir[0])));
         tr.addEventListener("click", ac);
         tr.addEventListener("keydown", (olay) => { if (olay.key === "Enter") ac(); });
       }
@@ -1034,12 +1080,13 @@
     const basliklar = ["Kişi", "Dönem", "Makale", "Dergi", "Q", "Yayın tarihi", "Kontrol notu",
       "Tutar", "Birim", "USD karşılığı"];
     const satirlar = kayitlar.map((k) => [
-      k.kisi, donemEtiketi(k.yil, k.ay), k.baslik, k.dergi, k.quartile, k.tarih,
+      k.elle ? `${k.kisi} ✎` : k.kisi, donemEtiketi(k.yil, k.ay), k.baslik, k.dergi, k.q, k.tarih,
       k.kontrol ? { metin: k.kontrol, rozet: k.tutar ? "" : "bekleyen" }
         : (k.tutar ? "" : { metin: "ödeme yok", rozet: "bekleyen" }),
       k.tutar ?? "", k.paraBirimi, k.usdKarsiligi ?? "",
     ]);
-    tabloYaz({ basliklar, satirlar, metinSutunlari: [1, 2, 3, 4, 5, 6, 8] });
+    tabloYaz({ basliklar, satirlar, metinSutunlari: [1, 2, 3, 4, 5, 6, 8],
+      satirTiklama: (i) => kayitFormuAc(kayitlar[i].donem, kayitlar[i].indeks) });
   }
 
   const GORUNUM_NOTLARI = {
@@ -1216,6 +1263,161 @@
   function cekmeceKapat() {
     $("cekmece").dataset.acik = "0";
     $("perde").dataset.acik = "0";
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Kayıt düzenleme                                                     */
+  /* ------------------------------------------------------------------ */
+
+  let duzenlenen = null;   // {donem, indeks} — indeks null ise yeni kayıt
+
+  function secenekDoldur(secim, secenekler, secili) {
+    secim.textContent = "";
+    for (const [deger, etiket] of secenekler) {
+      const secenek = document.createElement("option");
+      secenek.value = deger;
+      secenek.textContent = etiket;
+      secim.appendChild(secenek);
+    }
+    secim.value = secili ?? "";
+  }
+
+  function kayitFormuAc(donemAnahtar, indeks) {
+    const ay = durum.aylar.get(donemAnahtar);
+    if (!ay && indeks !== null) return;
+    const kayit = indeks === null || !ay ? {} : (ay.kayitlar[indeks] || {});
+    duzenlenen = { donem: donemAnahtar, indeks };
+
+    const yillar = [...new Set([...durum.aylar.values()].map((a) => a.yil))];
+    const buYil = new Date().getFullYear();
+    for (let y = Math.min(buYil - 3, ...yillar); y <= Math.max(buYil + 2, ...yillar); y += 1) {
+      if (!yillar.includes(y)) yillar.push(y);
+    }
+    const seciliYil = ay ? ay.yil : buYil;
+    const seciliAy = ay ? ay.ay : new Date().getMonth() + 1;
+    secenekDoldur($("dAy"), AY_ADLARI.map((ad, i) => [String(i + 1), ad]), String(seciliAy));
+    secenekDoldur($("dYil"), yillar.sort((a, b) => a - b).map((y) => [String(y), String(y)]),
+      String(seciliYil));
+    secenekDoldur($("dQuartile"), [["", "belirtilmemiş"], ...QUARTILELER.map((q) => [q, q])],
+      (kayit.quartile || "").toUpperCase());
+    secenekDoldur($("dPara"), [["", "otomatik (nottan)"], ...PARA_BIRIMLERI.map((b) => [b, b])],
+      kayit.paraBirimiElle || "");
+
+    const adListesi = $("kisiListesi");
+    adListesi.textContent = "";
+    for (const ad of [...new Set(tumKayitlar().map((k) => k.kisi))].sort((a, b) => a.localeCompare(b, "tr"))) {
+      const secenek = document.createElement("option");
+      secenek.value = ad;
+      adListesi.appendChild(secenek);
+    }
+
+    $("dKisi").value = kayit.kisi || "";
+    $("dBaslik").value = kayit.baslik || "";
+    $("dDergi").value = kayit.dergi || "";
+    $("dTarih").value = kayit.tarih || "";
+    $("dTutar").value = kayit.tutar ?? "";
+    $("dKontrol").value = kayit.kontrol || "";
+    $("dDoi").value = kayit.doi || "";
+    $("dYazarlar").value = kayit.yazarlar || "";
+    $("duzenleBaslik").textContent = indeks === null ? "Yeni kayıt" : "Kaydı düzenle";
+    $("duzenleNot").textContent = indeks === null
+      ? "Panelde elle eklenen kayıt; ayın Excel'i tekrar yüklenirse silinir."
+      : `${ay ? donemEtiketi(ay.yil, ay.ay) : ""} dosyasındaki ${indeks + 1}. kayıt. `
+        + "Düzeltmen ayın Excel'i tekrar yüklenene kadar kalır.";
+    $("duzenleSil").hidden = indeks === null;
+    $("duzenle").dataset.acik = "1";
+    $("perde").dataset.acik = "1";
+    $("dKisi").focus();
+  }
+
+  function duzenlemeKapat() {
+    duzenlenen = null;
+    $("duzenle").dataset.acik = "0";
+    if ($("cekmece").dataset.acik !== "1") $("perde").dataset.acik = "0";
+  }
+
+  /** Bir ayın kayıt listesini yerine yazar. */
+  async function ayiGuncelle(anahtar, kayitlar, dosyaAdi) {
+    const mevcut = durum.aylar.get(anahtar);
+    const yil = Number(anahtar.slice(0, 4));
+    const ay = Number(anahtar.slice(5));
+    const belge = {
+      yil, ay,
+      dosya: (mevcut && mevcut.dosya) || dosyaAdi || "elle düzenlendi",
+      yuklenme: (mevcut && mevcut.yuklenme) || new Date().toISOString(),
+      duzenlenme: new Date().toISOString(),
+      kayitlar,
+    };
+    if (durum.db) {
+      await durum.db.doc(`aylar/${anahtar}`).set(belge);
+    } else {
+      durum.aylar.set(anahtar, belge);
+      yereleYaz();
+      ciz();
+    }
+  }
+
+  async function kaydiKaydet() {
+    if (!duzenlenen) return;
+    const kisi = temizAd($("dKisi").value);
+    if (!kisi) { bilgiVer("Kişi adı boş olamaz."); return; }
+    const hedefAnahtar = donemAnahtari(Number($("dYil").value), Number($("dAy").value));
+    const tutarMetni = $("dTutar").value.trim();
+    const yeniKayit = {
+      kisi,
+      sira: "",
+      baslik: $("dBaslik").value.trim(),
+      dergi: $("dDergi").value.trim(),
+      yazarlar: $("dYazarlar").value.trim(),
+      doi: $("dDoi").value.trim(),
+      quartile: $("dQuartile").value,
+      tarih: $("dTarih").value.trim(),
+      indexLink: "",
+      kontrol: $("dKontrol").value.trim(),
+      tutar: tutarMetni === "" ? null : sayiyaCevir(tutarMetni),
+      odemeMetni: "",
+      paraBirimiElle: $("dPara").value || "",
+      elle: true,
+    };
+    const kaynak = duzenlenen.donem;
+    const kaynakAy = durum.aylar.get(kaynak);
+    try {
+      if (duzenlenen.indeks !== null && kaynakAy && kaynak !== hedefAnahtar) {
+        const kalanlar = kaynakAy.kayitlar.filter((_, i) => i !== duzenlenen.indeks);
+        await ayiGuncelle(kaynak, kalanlar);                     // kayıt başka aya taşındı
+      }
+      const hedefAy = durum.aylar.get(hedefAnahtar);
+      const liste = hedefAy ? [...hedefAy.kayitlar] : [];
+      if (duzenlenen.indeks !== null && kaynak === hedefAnahtar) liste[duzenlenen.indeks] = yeniKayit;
+      else liste.push(yeniKayit);
+      await ayiGuncelle(hedefAnahtar, liste);
+      bilgiVer("Kayıt güncellendi.");
+      duzenlemeKapat();
+    } catch (hata) {
+      bilgiVer(yazmaHatasi(hata));
+    }
+  }
+
+  async function kaydiSil() {
+    if (!duzenlenen || duzenlenen.indeks === null) return;
+    const ay = durum.aylar.get(duzenlenen.donem);
+    if (!ay) return;
+    const dugme = $("duzenleSil");
+    if (dugme.dataset.onay !== "1") {           // iki adımlı onay
+      dugme.dataset.onay = "1";
+      dugme.textContent = "Silmek için tekrar bas";
+      setTimeout(() => { dugme.dataset.onay = "0"; dugme.textContent = "Bu kaydı sil"; }, 4000);
+      return;
+    }
+    dugme.dataset.onay = "0";
+    dugme.textContent = "Bu kaydı sil";
+    try {
+      await ayiGuncelle(duzenlenen.donem, ay.kayitlar.filter((_, i) => i !== duzenlenen.indeks));
+      bilgiVer("Kayıt silindi.");
+      duzenlemeKapat();
+    } catch (hata) {
+      bilgiVer(yazmaHatasi(hata));
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1535,8 +1737,19 @@
   $("odemeliKutu").addEventListener("change", (olay) => { durum.sadeceOdemeli = olay.target.checked; ciz(); });
   $("aramaKutusu").addEventListener("input", (olay) => { durum.arama = olay.target.value; ciz(); });
   $("cekmeceKapat").addEventListener("click", cekmeceKapat);
-  $("perde").addEventListener("click", cekmeceKapat);
-  document.addEventListener("keydown", (olay) => { if (olay.key === "Escape") cekmeceKapat(); });
+  $("duzenleKapat").addEventListener("click", duzenlemeKapat);
+  $("duzenleKaydet").addEventListener("click", kaydiKaydet);
+  $("duzenleSil").addEventListener("click", kaydiSil);
+  $("kayitEkleDugmesi").addEventListener("click", () => {
+    const aylar = [...durum.aylar.keys()].sort();
+    const secili = durum.ay !== "tumu" ? durum.ay : (aylar[aylar.length - 1]
+      || donemAnahtari(new Date().getFullYear(), new Date().getMonth() + 1));
+    kayitFormuAc(secili, null);
+  });
+  $("perde").addEventListener("click", () => { cekmeceKapat(); duzenlemeKapat(); });
+  document.addEventListener("keydown", (olay) => {
+    if (olay.key === "Escape") { cekmeceKapat(); duzenlemeKapat(); }
+  });
 
   const birak = $("birakAlani");
   birak.addEventListener("dragover", (olay) => { olay.preventDefault(); birak.classList.add("uzerinde"); });
