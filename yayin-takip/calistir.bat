@@ -1,6 +1,4 @@
 @echo off
-REM Windows'ta cift tiklayarak calistirmak icin
+REM Yedek yontem: kisayol yerine bu dosyayi da cift tiklayabilirsin.
 cd /d "%~dp0"
-python -c "import openpyxl" 2>NUL || python -m pip install -r requirements.txt
-python app.py
-pause
+start "" pythonw app.py || python app.py

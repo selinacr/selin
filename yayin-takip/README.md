@@ -17,6 +17,18 @@ python app.py
 Modul eksigi cikarsa `conda install openpyxl`. Anaconda disinda:
 `pip install -r requirements.txt` (Linux'ta ayrica `sudo apt install python3-tk`).
 
+### Masaustu kisayolu (Anaconda Prompt ile ugrasmamak icin)
+
+Anaconda Prompt'ta klasordeyken bir kez:
+
+```bat
+python kisayol_olustur.py
+```
+
+Masaustunde **Yayin Takip** kisayolu olusur; cift tiklayinca uygulama dogrudan
+acilir, konsol penceresi cikmaz. Klasoru baska yere tasirsan betigi yeni
+yerinde tekrar calistir.
+
 Ornek ay dosyasi uretmek icin: `python ornek_veri.py`.
 
 ## Beklenen dosya duzeni
