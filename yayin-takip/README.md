@@ -7,6 +7,24 @@ raporlar guncellenir.
 
 ## Kurulum
 
+### Anaconda ile (Windows'ta en kolayi)
+
+Anaconda'da tkinter ve openpyxl zaten kuruludur, ek kurulum gerekmez:
+
+1. Baslat menusunden **Anaconda Prompt**'u ac.
+2. Klasore gec ve calistir:
+
+```bat
+cd C:\...\selin\yayin-takip
+python app.py
+```
+
+Modul eksigi cikarsa: `conda install openpyxl`.
+`calistir.bat` dosyasini cift tiklamak da ayni isi yapar (Anaconda'yi PATH'e
+eklemediysen dosyayi Anaconda Prompt icinden `calistir.bat` diye cagir).
+
+### Diger kurulumlar
+
 ```bash
 pip install -r requirements.txt      # sadece openpyxl
 python app.py
@@ -14,6 +32,14 @@ python app.py
 
 Python 3.10+ gerekir. tkinter Windows/macOS kurulumlarinda hazir gelir;
 Linux'ta `sudo apt install python3-tk`.
+
+## Her ay ne yapacaksin
+
+Yeni ayin Excel'ini "1) Excel ice aktar" sekmesinden sec → profilini yukle →
+"Veritabanina aktar". Eski aylar veritabaninda durdugu icin butun raporlar
+(kisi, odeme turu, aylik, yillik) otomatik guncellenir; ayni dosyayi yanlislikla
+iki kez aktarirsan mukerrer kayit olusmaz. Bir ayin duzeltilmis surumu gelirse
+"Donemleri sil ve yeniden yaz" secenegini kullan.
 
 Denemek icin ornek dosya: `python ornek_veri.py` → `ornek_yayin.xlsx`.
 
