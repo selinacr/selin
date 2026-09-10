@@ -987,7 +987,7 @@
       ciz();
       return;
     }
-    $("depoNotu").textContent = "Veriler panele kayıtlı; her cihazdan aynı sonuçları görürsün.";
+    $("depoNotu").textContent = "Veriler panele kayıtlı: linki açan herkes aynı tabloları görür, yükleme ve silmeyi yalnızca düzenleme yetkisi olanlar yapabilir.";
     db.collection("aylar").onSnapshot((anlik) => {
       durum.aylar = new Map();
       for (const belge of anlik.docs) {
@@ -1001,6 +1001,14 @@
       durum.kurallar = (anlik.exists && anlik.data()) || {};
       ciz();
     }, () => {});
+  }
+
+  /** Yazma yetkisi olmayan (yalnız görüntüleyen) kişilere anlaşılır bir mesaj verir. */
+  function yazmaHatasi(hata) {
+    if (hata && hata.code === "invalid_argument") {
+      return "Bu panelde değişiklik yapma yetkin yok; sahibinden düzenleme izni iste.";
+    }
+    return `Kaydedilemedi — ${(hata && hata.message) || hata}`;
   }
 
   async function ayKaydet(yil, ay, kayitlar, dosyaAdi) {
@@ -1020,12 +1028,17 @@
     const ay = durum.aylar.get(anahtar);
     if (!ay) return;
     if (!confirm(`${donemEtiketi(ay.yil, ay.ay)} verisi silinsin mi?`)) return;
-    if (durum.db) {
-      await durum.db.doc(`aylar/${anahtar}`).delete();
-    } else {
-      durum.aylar.delete(anahtar);
-      yereleYaz();
-      ciz();
+    try {
+      if (durum.db) {
+        await durum.db.doc(`aylar/${anahtar}`).delete();
+      } else {
+        durum.aylar.delete(anahtar);
+        yereleYaz();
+        ciz();
+      }
+    } catch (hata) {
+      bilgiVer(yazmaHatasi(hata));
+      return;
     }
     if (durum.ay === anahtar) durum.ay = "tumu";
     bilgiVer(`${donemEtiketi(ay.yil, ay.ay)} silindi.`);
@@ -1035,10 +1048,15 @@
     const kurallar = { ...durum.kurallar };
     if (birim) kurallar[temizAd(kisi)] = birim; else delete kurallar[temizAd(kisi)];
     durum.kurallar = kurallar;
-    if (durum.db) {
-      await durum.db.doc("ayarlar/kurallar").set(kurallar);
-    } else {
-      yereleYaz();
+    try {
+      if (durum.db) {
+        await durum.db.doc("ayarlar/kurallar").set(kurallar);
+      } else {
+        yereleYaz();
+      }
+    } catch (hata) {
+      bilgiVer(yazmaHatasi(hata));
+      return;
     }
     ciz();
     cekmeceAc(kisi);
@@ -1120,7 +1138,8 @@
       $("dosyaDurumu").textContent = "Kaydedildi. Yeni bir dosya seçebilirsin.";
       $("dosyaGirisi").value = "";
     } catch (hata) {
-      gunlugeYaz(`HATA: kaydedilemedi — ${hata.message || hata}`);
+      gunlugeYaz(`HATA: ${yazmaHatasi(hata)}`);
+      bilgiVer(yazmaHatasi(hata));
     }
   }
 
