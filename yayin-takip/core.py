@@ -1,7 +1,18 @@
-"""Yayin takip cekirdek katmani.
+"""Adjunct yayin takibi - cekirdek katman.
 
-Excel okuma, kolon eslestirme, SQLite depolama ve ozet/pivot sorgulari.
-Arayuzden bagimsizdir; komut satirindan veya testlerden de kullanilabilir.
+Aylik "... Yayinlari" Excel dosyalarini ayristirir, SQLite'a yazar ve
+kisi / donem / para birimi bazinda ozet-pivot sorgulari uretir.
+
+Dosya duzeni (her ay ayni):
+    AGUSTOS 2026 Yayinlari              <- baslik, donemi verir
+    <Kisi Adi>                          <- bolum basligi
+    Sira | Article Title | Journal | Authors | DOI | Quartile | Date |
+         Index Link | Kontrol | Payments
+    1    | ...                                                   | 431
+    ...
+                                 Toplam |      | 1293             <- bolum toplami
+    ...
+    OZET / SUMMARY                      <- kisi bazinda toplam listesi
 """
 
 from __future__ import annotations
@@ -24,77 +35,71 @@ AY_ADLARI = [
     "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik",
 ]
 
+PARA_BIRIMLERI = ["USD", "EUR", "CNY", "TRY", "GBP"]
+
 _AY_ANAHTAR = {
     "ocak": 1, "oca": 1, "january": 1, "jan": 1,
-    "subat": 2, "sub": 2, "şubat": 2, "february": 2, "feb": 2,
+    "subat": 2, "sub": 2, "february": 2, "feb": 2,
     "mart": 3, "mar": 3, "march": 3,
     "nisan": 4, "nis": 4, "april": 4, "apr": 4,
-    "mayis": 5, "may": 5, "mayıs": 5,
+    "mayis": 5, "may": 5,
     "haziran": 6, "haz": 6, "june": 6, "jun": 6,
     "temmuz": 7, "tem": 7, "july": 7, "jul": 7,
-    "agustos": 8, "agu": 8, "ağustos": 8, "august": 8, "aug": 8,
-    "eylul": 9, "eyl": 9, "eylül": 9, "september": 9, "sep": 9,
+    "agustos": 8, "agu": 8, "august": 8, "aug": 8,
+    "eylul": 9, "eyl": 9, "september": 9, "sept": 9, "sep": 9,
     "ekim": 10, "eki": 10, "october": 10, "oct": 10,
-    "kasim": 11, "kas": 11, "kasım": 11, "november": 11, "nov": 11,
-    "aralik": 12, "ara": 12, "aralık": 12, "december": 12, "dec": 12,
+    "kasim": 11, "kas": 11, "november": 11, "nov": 11,
+    "aralik": 12, "ara": 12, "december": 12, "dec": 12,
 }
 
-# Eslestirilebilir alanlar: alan -> (etiket, zorunlu mu, baslikta aranan anahtarlar)
-ALANLAR = {
-    "kisi": ("Kisi / Hak sahibi", True,
-             ["kisi", "kişi", "ad soyad", "adsoyad", "sanatci", "sanatçı", "hak sahibi",
-              "uye", "üye", "isim", "ad", "personel", "yazar", "besteci", "icracı", "icraci"]),
-    "tarih": ("Tarih / Donem", True,
-              ["tarih", "donem", "dönem", "ay", "period", "date", "yayin tarihi", "yayın tarihi"]),
-    "odeme_turu": ("Odeme turu", False,
-                   ["odeme", "ödeme", "odeme turu", "ödeme türü", "tur", "tür", "kategori",
-                    "gelir turu", "gelir türü", "tip", "hak turu", "hak türü"]),
-    "eser": ("Eser / Aciklama", False,
-             ["eser", "eser adi", "eser adı", "sarki", "şarkı", "parca", "parça",
-              "aciklama", "açıklama", "urun", "ürün", "baslik", "başlık"]),
-    "kanal": ("Kanal / Platform", False,
-              ["kanal", "platform", "mecra", "yayinci", "yayıncı", "radyo", "tv", "kaynak"]),
-    "adet": ("Adet / Yayin sayisi", False,
-             ["adet", "sayi", "sayı", "yayin sayisi", "yayın sayısı", "tekrar", "count", "miktar"]),
-    "brut": ("Brut tutar", False,
-             ["brut", "brut tutar", "tutar", "gross", "toplam", "hasilat", "hasılat", "ucret", "ücret"]),
-    "kesinti": ("Kesinti / Stopaj", False,
-                ["kesinti", "stopaj", "vergi", "komisyon", "kdv", "indirim"]),
-    "net": ("Net tutar (odenen)", False,
-            ["net", "net tutar", "odenen", "ödenen", "net odeme", "net ödeme", "eline gecen"]),
+# Bolum tablosunun basliklari -> alan adi (basliktaki anahtar kelimeler)
+SUTUN_ANAHTARLARI = {
+    "sira": ["sira", "no", "sno"],
+    "baslik": ["article title", "title", "baslik", "makale", "yayin adi", "eser"],
+    "dergi": ["journal", "conference", "dergi", "yayinevi"],
+    "yazarlar": ["authors", "author", "yazar"],
+    "doi": ["doi"],
+    "quartile": ["quartile", "quartil", "q index", "kategori"],
+    "tarih": ["date", "tarih", "yayin tarihi"],
+    "index_link": ["index link", "index", "link", "scopus", "wos"],
+    "kontrol": ["kontrol", "note", "not", "aciklama"],
+    "odeme": ["payments", "payment", "odeme", "tutar", "ucret"],
 }
-
-ZORUNLU_ALANLAR = [a for a, (_, z, _) in ALANLAR.items() if z]
 
 
 # --------------------------------------------------------------------------- #
-# Yardimci donusturucular
+# Metin / sayi / tarih yardimcilari
 # --------------------------------------------------------------------------- #
 
-def _sadelestir(metin) -> str:
-    """Baslik karsilastirmasi icin kucuk harfe indirip Turkce karakterleri sadelestirir."""
+def sadelestir(metin) -> str:
+    """Karsilastirma icin: kucuk harf, Turkce karakter sadelestirme, tek bosluk."""
     s = str(metin or "").strip().lower()
-    for a, b in (("ı", "i"), ("ş", "s"), ("ğ", "g"), ("ü", "u"), ("ö", "o"), ("ç", "c"), ("İ", "i")):
+    for a, b in (("ı", "i"), ("İ", "i"), ("ş", "s"), ("ğ", "g"),
+                 ("ü", "u"), ("ö", "o"), ("ç", "c"), ("â", "a")):
         s = s.replace(a, b)
     return re.sub(r"[^a-z0-9]+", " ", s).strip()
 
 
-def sayiya_cevir(deger) -> float:
-    """'1.234,56 TL', '(120)', 1234.5 gibi degerleri float'a cevirir."""
+def temiz_ad(metin) -> str:
+    """Kisi adindaki satir sonu ve fazla bosluklari temizler."""
+    return re.sub(r"\s+", " ", str(metin or "").replace("\n", " ")).strip()
+
+
+def sayiya_cevir(deger):
+    """Hucre degerini sayiya cevirir; sayi yoksa None doner."""
     if deger is None:
-        return 0.0
+        return None
     if isinstance(deger, bool):
-        return 0.0
+        return None
     if isinstance(deger, (int, float)):
         return float(deger)
     s = str(deger).strip()
     if not s:
-        return 0.0
+        return None
     negatif = s.startswith("(") and s.endswith(")")
     s = s.strip("()").replace("\xa0", "").replace(" ", "")
-    s = re.sub(r"(?i)(tl|try|₺|\$|eur|€|usd)", "", s)
+    s = re.sub(r"(?i)(tl|try|₺|\$|eur|€|usd|cny|¥|gbp|£)", "", s)
     if "," in s and "." in s:
-        # Hangisi ondalik ayraci: en sagdaki isaret belirler.
         if s.rfind(",") > s.rfind("."):
             s = s.replace(".", "").replace(",", ".")
         else:
@@ -102,76 +107,113 @@ def sayiya_cevir(deger) -> float:
     elif "," in s:
         s = s.replace(".", "").replace(",", ".")
     elif "." in s:
-        # Sadece nokta var: TR bicimindeki binlik ayraci (1.234 / 2.500.000) ile
-        # ondalik noktayi ayirt et. Son grup tam 3 haneyse binlik kabul edilir.
+        # Sadece nokta: "2.500" gibi son grubu 3 haneli degerler binlik ayracidir.
         parcalar = s.split(".")
         if len(parcalar) > 2 or (len(parcalar[-1]) == 3 and parcalar[0].lstrip("-").isdigit()):
             s = "".join(parcalar)
     s = re.sub(r"[^0-9.\-]", "", s)
     if s in ("", "-", "."):
-        return 0.0
+        return None
     try:
         sonuc = float(s)
     except ValueError:
-        return 0.0
+        return None
     return -sonuc if negatif else sonuc
 
 
-def tarihe_cevir(deger):
-    """Hucre degerinden (yil, ay, iso_tarih|None) uretir. Cozemezse None doner."""
-    if deger is None or (isinstance(deger, str) and not deger.strip()):
-        return None
+def tarih_metni(deger) -> str:
+    """Date sutunu cok bicimli; ekranda okunur bir metne indirger."""
+    if deger is None:
+        return ""
     if isinstance(deger, datetime):
-        return deger.year, deger.month, deger.date().isoformat()
+        return deger.date().isoformat()
     if isinstance(deger, date):
-        return deger.year, deger.month, deger.isoformat()
-    if isinstance(deger, (int, float)) and not isinstance(deger, bool):
-        # 202601 / 2026 gibi sayisal donemler
-        tam = int(deger)
-        if 190001 <= tam <= 299912:
-            return tam // 100, tam % 100, None
-        if 1900 <= tam <= 2999:
-            return tam, 0, None
-        return None
+        return deger.isoformat()
+    return re.sub(r"\s+", " ", str(deger)).strip()
 
-    s = str(deger).strip()
-    kalip = re.match(r"^(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?$", s)
+
+def donem_coz(metin):
+    """'AGUSTOS 2026 Yayinlari' / 'Agustos Yayinlari_Adjunct' -> (yil, ay). Yoksa None."""
+    sade = sadelestir(metin)
+    if not sade:
+        return None
+    yil_bul = re.search(r"\b(20\d{2})\b", sade)
+    ay = None
+    for anahtar, no in _AY_ANAHTAR.items():
+        if re.search(rf"\b{anahtar}", sade):
+            ay = no
+            break
+    if ay and yil_bul:
+        return int(yil_bul.group(1)), ay
+    if ay:
+        return None if not yil_bul else (int(yil_bul.group(1)), ay)
+    kalip = re.search(r"\b(20\d{2})[ \-_/]?(0[1-9]|1[0-2])\b", sade)
     if kalip:
-        yil, ay, gun = int(kalip.group(1)), int(kalip.group(2)), kalip.group(3)
-        if 1 <= ay <= 12:
-            iso = date(yil, ay, int(gun)).isoformat() if gun else None
-            return yil, ay, iso
-    kalip = re.match(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$", s)
-    if kalip:
-        gun, ay, yil = int(kalip.group(1)), int(kalip.group(2)), int(kalip.group(3))
-        if 1 <= ay <= 12 and 1 <= gun <= 31:
-            return yil, ay, date(yil, ay, gun).isoformat()
-    kalip = re.match(r"^(\d{1,2})[-/.](\d{4})$", s)
-    if kalip and 1 <= int(kalip.group(1)) <= 12:
-        return int(kalip.group(2)), int(kalip.group(1)), None
-    # "Ocak 2026", "2026 Ocak", "Oca-26"
-    sade = _sadelestir(s)
-    yil_bul = re.search(r"(19|20)\d{2}", sade)
-    for anahtar, ay in _AY_ANAHTAR.items():
-        anahtar_sade = _sadelestir(anahtar)
-        if re.search(rf"\b{re.escape(anahtar_sade)}", sade):
-            if yil_bul:
-                return int(yil_bul.group(0)), ay, None
-            kisa_yil = re.search(r"\b(\d{2})\b", sade)
-            if kisa_yil:
-                return 2000 + int(kisa_yil.group(1)), ay, None
-    if yil_bul and len(sade) <= 6:
-        return int(yil_bul.group(0)), 0, None
+        return int(kalip.group(1)), int(kalip.group(2))
     return None
 
 
 def donem_etiketi(yil: int, ay: int) -> str:
-    return f"{yil}-{ay:02d}" if ay else f"{yil}"
+    return f"{AY_ADLARI[ay - 1]} {yil}" if 1 <= (ay or 0) <= 12 else str(yil)
+
+
+def donem_kisa(yil: int, ay: int) -> str:
+    return f"{yil}-{ay:02d}" if ay else str(yil)
+
+
+def para_birimi_coz(kontrol: str, kisi_kurallari=None, kisi: str = ""):
+    """Kontrol notundan para birimini ve varsa USD karsiligini belirler.
+
+    - Not 'EUR/USD paritesi' iceriyorsa tutar EUR'dur; nottaki '500/1.1595'
+      ifadesinin payi (500) USD karsiligidir.
+    - Not Cin Yuani / CNY diyorsa CNY.
+    - Kisi bazli zorlama (or. hep Yuan alan biri) kurallardan gelir.
+    - Aksi halde USD.
+    """
+    not_sade = sadelestir(kontrol)
+    zorlanan = (kisi_kurallari or {}).get(temiz_ad(kisi))
+    parite = re.search(r"(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)", str(kontrol or ""))
+    usd_karsiligi = sayiya_cevir(parite.group(1)) if parite else None
+
+    if zorlanan:
+        return zorlanan, usd_karsiligi
+    if re.search(r"\b(cny|yuan|yuani|rmb|cin)\b", not_sade):
+        return "CNY", usd_karsiligi
+    if "eur" in not_sade or "parite" in not_sade or "paraite" in not_sade:
+        return "EUR", usd_karsiligi
+    return "USD", usd_karsiligi
 
 
 # --------------------------------------------------------------------------- #
-# Excel okuma / yazma
+# Ayristirma
 # --------------------------------------------------------------------------- #
+
+@dataclass
+class Yayin:
+    kisi: str
+    yil: int
+    ay: int
+    sira: str = ""
+    baslik: str = ""
+    dergi: str = ""
+    yazarlar: str = ""
+    doi: str = ""
+    quartile: str = ""
+    tarih: str = ""
+    index_link: str = ""
+    kontrol: str = ""
+    tutar: float | None = None
+    para_birimi: str = "USD"
+    usd_karsiligi: float | None = None
+    onayli: int = 0
+    kaynak: str = ""
+
+    def imza(self) -> str:
+        kimlik = (self.doi.strip().lower() or
+                  f"{sadelestir(self.baslik)}|{sadelestir(self.dergi)}")
+        ham = f"{sadelestir(self.kisi)}|{self.yil}|{self.ay}|{kimlik}|{self.sira}"
+        return hashlib.sha256(ham.encode("utf-8")).hexdigest()
+
 
 def sayfa_adlari(dosya: str):
     kitap = load_workbook(dosya, read_only=True, data_only=True)
@@ -181,173 +223,145 @@ def sayfa_adlari(dosya: str):
         kitap.close()
 
 
-def excel_oku(dosya: str, sayfa: str | None = None, baslik_satiri: int = 1):
-    """(basliklar, satirlar) doner. Satirlar ham hucre degerleridir."""
-    kitap = load_workbook(dosya, read_only=True, data_only=True)
-    try:
-        calisma = kitap[sayfa] if sayfa else kitap[kitap.sheetnames[0]]
-        tum = list(calisma.iter_rows(values_only=True))
-    finally:
-        kitap.close()
-    if not tum:
-        return [], []
-    idx = max(1, baslik_satiri) - 1
-    if idx >= len(tum):
-        return [], []
-    basliklar = [("" if h is None else str(h).strip()) for h in tum[idx]]
-    satirlar = [s for s in tum[idx + 1:] if any(h is not None and str(h).strip() for h in s)]
-    return basliklar, satirlar
-
-
-def baslik_satiri_bul(dosya: str, sayfa: str | None = None, tarama: int = 15) -> int:
-    """Ilk 15 satiri tarayip en cok alanla eslesen satiri baslik kabul eder (1 tabanli)."""
-    kitap = load_workbook(dosya, read_only=True, data_only=True)
-    try:
-        calisma = kitap[sayfa] if sayfa else kitap[kitap.sheetnames[0]]
-        ilk = []
-        for i, satir in enumerate(calisma.iter_rows(values_only=True)):
-            if i >= tarama:
-                break
-            ilk.append(satir)
-    finally:
-        kitap.close()
-    en_iyi, en_iyi_puan = 1, -1
-    for i, satir in enumerate(ilk, start=1):
-        basliklar = [("" if h is None else str(h)) for h in satir]
-        puan = len(otomatik_esle(basliklar)) + sum(1 for b in basliklar if b.strip())/100
-        if puan > en_iyi_puan:
-            en_iyi, en_iyi_puan = i, puan
-    return en_iyi
-
-
-def otomatik_esle(basliklar) -> dict:
-    """Baslik metinlerinden alan -> kolon indeksi esleme onerisi uretir."""
-    esleme = {}
-    kullanilan = set()
-    sade_basliklar = [_sadelestir(b) for b in basliklar]
-    for alan, (_, _, anahtarlar) in ALANLAR.items():
-        en_iyi, en_iyi_puan = None, 0
-        for i, baslik in enumerate(sade_basliklar):
-            if not baslik or i in kullanilan:
+def _sutun_haritasi(satir):
+    """Bolum baslik satirindan alan -> kolon indeksi haritasi kurar."""
+    harita = {}
+    for i, hucre in enumerate(satir):
+        sade = sadelestir(hucre)
+        if not sade:
+            continue
+        for alan, anahtarlar in SUTUN_ANAHTARLARI.items():
+            if alan in harita:
                 continue
             for anahtar in anahtarlar:
-                a = _sadelestir(anahtar)
-                if baslik == a:
-                    puan = 100 + len(a)
-                elif baslik.startswith(a) or baslik.endswith(a):
-                    puan = 60 + len(a)
-                elif a in baslik:
-                    puan = 40 + len(a)
-                else:
-                    continue
-                if puan > en_iyi_puan:
-                    en_iyi, en_iyi_puan = i, puan
-        if en_iyi is not None:
-            esleme[alan] = en_iyi
-            kullanilan.add(en_iyi)
-    return esleme
+                a = sadelestir(anahtar)
+                if sade == a or sade.startswith(a) or a in sade:
+                    harita[alan] = i
+                    break
+    return harita
 
 
-def excel_yaz(dosya: str, basliklar, satirlar, sayfa_adi: str = "Rapor",
-              para_kolonlari=None, baslik_notu: str | None = None):
-    """Basit bicimli bir Excel raporu yazar."""
-    para_kolonlari = set(para_kolonlari or [])
-    kitap = Workbook()
-    calisma = kitap.active
-    calisma.title = sayfa_adi[:31] or "Rapor"
-    ilk_satir = 1
-    if baslik_notu:
-        calisma.cell(row=1, column=1, value=baslik_notu).font = Font(bold=True, size=12)
-        ilk_satir = 3
-    dolgu = PatternFill("solid", fgColor="DDE7F0")
-    for j, baslik in enumerate(basliklar, start=1):
-        hucre = calisma.cell(row=ilk_satir, column=j, value=baslik)
-        hucre.font = Font(bold=True)
-        hucre.fill = dolgu
-        hucre.alignment = Alignment(horizontal="center", wrap_text=True)
-    for i, satir in enumerate(satirlar, start=ilk_satir + 1):
-        for j, deger in enumerate(satir, start=1):
-            hucre = calisma.cell(row=i, column=j, value=deger)
-            if (j - 1) in para_kolonlari and isinstance(deger, (int, float)):
-                hucre.number_format = '#,##0.00'
-    for j, baslik in enumerate(basliklar, start=1):
-        uzunluk = max([len(str(baslik))] + [len(str(s[j-1])) for s in satirlar[:200] if len(s) >= j]) + 2
-        calisma.column_dimensions[get_column_letter(j)].width = min(max(uzunluk, 10), 42)
-    calisma.freeze_panes = calisma.cell(row=ilk_satir + 1, column=1)
-    kitap.save(dosya)
-    return dosya
+def _metin(satir, harita, alan) -> str:
+    i = harita.get(alan)
+    if i is None or i >= len(satir) or satir[i] is None:
+        return ""
+    return re.sub(r"\s+", " ", str(satir[i])).strip()
 
 
-# --------------------------------------------------------------------------- #
-# Kayit modeli
-# --------------------------------------------------------------------------- #
+def dosyayi_ayristir(dosya: str, sayfa: str | None = None, donem=None,
+                     kisi_kurallari=None):
+    """Excel'i okuyup (donem, yayinlar, ozet, uyarilar) doner.
 
-@dataclass
-class Kayit:
-    kisi: str
-    yil: int
-    ay: int
-    tarih: str | None
-    odeme_turu: str
-    eser: str
-    kanal: str
-    adet: float
-    brut: float
-    kesinti: float
-    net: float
-    kaynak: str = ""
+    donem: (yil, ay) verilirse dosyadaki basliga bakilmaz.
+    ozet:  dosyanin kendi 'OZET / SUMMARY' bloğu {kisi: toplam}
+    """
+    kitap = load_workbook(dosya, read_only=True, data_only=True)
+    try:
+        calisma = kitap[sayfa] if sayfa else kitap[kitap.sheetnames[0]]
+        satirlar = [list(s) for s in calisma.iter_rows(values_only=True)]
+    finally:
+        kitap.close()
 
-    def imza(self) -> str:
-        ham = "|".join(str(x) for x in (
-            self.kisi.lower(), self.yil, self.ay, self.tarih or "", self.odeme_turu.lower(),
-            self.eser.lower(), self.kanal.lower(), round(self.adet, 4),
-            round(self.brut, 2), round(self.kesinti, 2), round(self.net, 2)))
-        return hashlib.sha256(ham.encode("utf-8")).hexdigest()
+    uyarilar = []
+    if donem is None:
+        for satir in satirlar[:5]:
+            for hucre in satir:
+                cozulen = donem_coz(hucre)
+                if cozulen:
+                    donem = cozulen
+                    break
+            if donem:
+                break
+    if donem is None:
+        donem = donem_coz(os.path.basename(dosya))
+    if donem is None:
+        raise ValueError(
+            "Dosyanin donemi bulunamadi. Baslik satirinda 'AGUSTOS 2026 Yayinlari' "
+            "gibi bir ifade yoksa donemi elle secin.")
+    yil, ay = donem
 
+    yayinlar, ozet = [], {}
+    harita, kisi = {}, ""
+    ozet_bolumu = False
+    kaynak = os.path.basename(dosya)
 
-def satirlari_donustur(basliklar, satirlar, esleme, kaynak: str = ""):
-    """Ham Excel satirlarini Kayit listesine cevirir. (kayitlar, hatalar) doner."""
-    eksik = [a for a in ZORUNLU_ALANLAR if a not in esleme]
-    if eksik:
-        raise ValueError("Zorunlu alan eslenmedi: " + ", ".join(ALANLAR[a][0] for a in eksik))
-
-    def al(satir, alan):
-        i = esleme.get(alan)
-        if i is None or i >= len(satir):
-            return None
-        return satir[i]
-
-    kayitlar, hatalar = [], []
     for no, satir in enumerate(satirlar, start=1):
-        kisi = str(al(satir, "kisi") or "").strip()
+        metinler = [("" if h is None else str(h).strip()) for h in satir]
+        dolu = [m for m in metinler if m]
+        if not dolu:
+            continue
+        birlesik = sadelestir(" ".join(dolu))
+
+        if "ozet" in birlesik or "summary" in birlesik:
+            ozet_bolumu = True
+            continue
+        if ozet_bolumu:
+            # 'OZET' blogu: <bos> | Kisi | Toplam
+            adaylar = [m for m in metinler if m]
+            if len(adaylar) >= 2:
+                tutar = sayiya_cevir(adaylar[-1])
+                ad = temiz_ad(adaylar[-2])
+                if tutar is not None and ad and sadelestir(ad) not in ("adjunct", "toplam odeme"):
+                    ozet[ad] = tutar
+            continue
+
+        ilk_sade = sadelestir(metinler[0]) if metinler else ""
+        if ilk_sade in ("sira", "no") or (harita == {} and "article title" in birlesik):
+            harita = _sutun_haritasi(metinler)
+            continue
+        if "toplam" in birlesik and len(dolu) <= 3:
+            continue  # bolum toplami; degerler satirlardan hesaplanir
+        if len(dolu) == 1 and metinler[0]:
+            # Tek dolu hucre: ya dosya basligi ya da kisi adi
+            if donem_coz(metinler[0]) or "yayin" in ilk_sade:
+                continue
+            kisi = temiz_ad(metinler[0])
+            continue
         if not kisi:
-            hatalar.append((no, "Kisi bos"))
             continue
-        cozulen = tarihe_cevir(al(satir, "tarih"))
-        if not cozulen:
-            hatalar.append((no, f"Tarih cozulemedi: {al(satir, 'tarih')!r}"))
+        if not harita:
+            uyarilar.append(f"{no}. satir: baslik satiri bulunamadan veri geldi, atlandi.")
             continue
-        yil, ay, iso = cozulen
-        brut = sayiya_cevir(al(satir, "brut"))
-        kesinti = sayiya_cevir(al(satir, "kesinti"))
-        net_ham = al(satir, "net")
-        net = sayiya_cevir(net_ham)
-        if "net" not in esleme or (net == 0 and (brut or kesinti)):
-            net = brut - kesinti
-        if "brut" not in esleme and net and not brut:
-            brut = net + kesinti
-        kayitlar.append(Kayit(
-            kisi=kisi,
-            yil=yil,
-            ay=ay,
-            tarih=iso,
-            odeme_turu=str(al(satir, "odeme_turu") or "Belirtilmemis").strip() or "Belirtilmemis",
-            eser=str(al(satir, "eser") or "").strip(),
-            kanal=str(al(satir, "kanal") or "").strip(),
-            adet=sayiya_cevir(al(satir, "adet")) if "adet" in esleme else 0.0,
-            brut=brut, kesinti=kesinti, net=net, kaynak=kaynak,
+
+        baslik = _metin(satir, harita, "baslik")
+        doi = _metin(satir, harita, "doi")
+        if not baslik and not doi:
+            continue
+
+        kontrol = _metin(satir, harita, "kontrol")
+        tutar = sayiya_cevir(satir[harita["odeme"]]) if "odeme" in harita else None
+        para, usd = para_birimi_coz(kontrol, kisi_kurallari, kisi)
+        if tutar is not None and usd is None and para == "USD":
+            usd = tutar
+        yayinlar.append(Yayin(
+            kisi=kisi, yil=yil, ay=ay,
+            sira=_metin(satir, harita, "sira"),
+            baslik=baslik,
+            dergi=_metin(satir, harita, "dergi"),
+            yazarlar=_metin(satir, harita, "yazarlar"),
+            doi=doi,
+            quartile=_metin(satir, harita, "quartile").upper(),
+            tarih=tarih_metni(satir[harita["tarih"]]) if "tarih" in harita else "",
+            index_link=_metin(satir, harita, "index_link"),
+            kontrol=kontrol,
+            tutar=tutar,
+            para_birimi=para,
+            usd_karsiligi=usd,
+            onayli=1 if (tutar or 0) > 0 else 0,
+            kaynak=kaynak,
         ))
-    return kayitlar, hatalar
+
+    if not yayinlar:
+        uyarilar.append("Dosyada kayit bulunamadi; sayfa secimini kontrol edin.")
+
+    # Dosyanin kendi ozet toplamlari ile hesaplanan toplamlari karsilastir.
+    for ad, beyan in ozet.items():
+        hesap = sum(y.tutar or 0 for y in yayinlar if sadelestir(y.kisi) == sadelestir(ad))
+        if abs(hesap - beyan) > 0.5:
+            uyarilar.append(
+                f"{ad}: dosyadaki ozet {beyan:g}, satirlardan hesaplanan {hesap:g} "
+                f"(satirlar esas alindi).")
+    return (yil, ay), yayinlar, ozet, uyarilar
 
 
 # --------------------------------------------------------------------------- #
@@ -355,45 +369,54 @@ def satirlari_donustur(basliklar, satirlar, esleme, kaynak: str = ""):
 # --------------------------------------------------------------------------- #
 
 SEMA = """
-CREATE TABLE IF NOT EXISTS kayitlar (
+CREATE TABLE IF NOT EXISTS yayinlar (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kisi TEXT NOT NULL,
     yil INTEGER NOT NULL,
     ay INTEGER NOT NULL,
-    tarih TEXT,
-    odeme_turu TEXT NOT NULL DEFAULT 'Belirtilmemis',
-    eser TEXT DEFAULT '',
-    kanal TEXT DEFAULT '',
-    adet REAL DEFAULT 0,
-    brut REAL DEFAULT 0,
-    kesinti REAL DEFAULT 0,
-    net REAL DEFAULT 0,
+    sira TEXT DEFAULT '',
+    baslik TEXT DEFAULT '',
+    dergi TEXT DEFAULT '',
+    yazarlar TEXT DEFAULT '',
+    doi TEXT DEFAULT '',
+    quartile TEXT DEFAULT '',
+    tarih TEXT DEFAULT '',
+    index_link TEXT DEFAULT '',
+    kontrol TEXT DEFAULT '',
+    tutar REAL,
+    para_birimi TEXT DEFAULT 'USD',
+    usd_karsiligi REAL,
+    onayli INTEGER DEFAULT 0,
     kaynak TEXT DEFAULT '',
     imza TEXT NOT NULL UNIQUE,
     eklenme TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS ix_kayit_donem ON kayitlar (yil, ay);
-CREATE INDEX IF NOT EXISTS ix_kayit_kisi ON kayitlar (kisi);
-CREATE INDEX IF NOT EXISTS ix_kayit_odeme ON kayitlar (odeme_turu);
+CREATE INDEX IF NOT EXISTS ix_yayin_donem ON yayinlar (yil, ay);
+CREATE INDEX IF NOT EXISTS ix_yayin_kisi ON yayinlar (kisi);
 
-CREATE TABLE IF NOT EXISTS profiller (
-    ad TEXT PRIMARY KEY,
-    esleme TEXT NOT NULL,
-    baslik_satiri INTEGER DEFAULT 1,
-    guncelleme TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS kisi_kurallari (
+    kisi TEXT PRIMARY KEY,
+    para_birimi TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS aktarimlar (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    dosya TEXT, sayfa TEXT, mod TEXT,
-    eklenen INTEGER, atlanan INTEGER, silinen INTEGER, hatali INTEGER,
+    dosya TEXT, sayfa TEXT, yil INTEGER, ay INTEGER,
+    eklenen INTEGER, silinen INTEGER, atlanan INTEGER,
     zaman TEXT NOT NULL
 );
 """
 
+OLCULER = {
+    "tutar": "Odeme tutari",
+    "usd_karsiligi": "USD karsiligi",
+    "yayin": "Kayit sayisi",
+    "onayli": "Onayli yayin sayisi",
+}
+
 
 class Veritabani:
-    """SQLite uzerinde kayit deposu ve ozet sorgulari."""
+    """SQLite deposu ve raporlama sorgulari."""
 
     def __init__(self, yol: str = VARSAYILAN_DB):
         self.yol = yol
@@ -410,69 +433,72 @@ class Veritabani:
 
     # -- yazma ------------------------------------------------------------- #
 
-    def aktar(self, kayitlar, mod: str = "atla", dosya: str = "", sayfa: str = "", hatali: int = 0):
-        """mod: 'atla' (ayni kayitlari gec) | 'donem_degistir' (dosyadaki donemleri sifirla)."""
-        silinen = 0
+    def aktar(self, yayinlar, yil: int, ay: int, dosya: str = "", sayfa: str = "",
+              donemi_degistir: bool = True):
+        """Ayin verisini yazar. Varsayilan davranis: o ayi silip yeniden yazmak."""
         imlec = self.baglanti.cursor()
-        if mod == "donem_degistir":
-            donemler = {(k.yil, k.ay) for k in kayitlar}
-            for yil, ay in donemler:
-                imlec.execute("DELETE FROM kayitlar WHERE yil=? AND ay=?", (yil, ay))
-                silinen += imlec.rowcount
+        silinen = 0
+        if donemi_degistir:
+            imlec.execute("DELETE FROM yayinlar WHERE yil=? AND ay=?", (yil, ay))
+            silinen = imlec.rowcount
         eklenen = atlanan = 0
         simdi = datetime.now().isoformat(timespec="seconds")
-        for kayit in kayitlar:
-            veri = asdict(kayit)
-            veri["imza"] = kayit.imza()
+        for yayin in yayinlar:
+            veri = asdict(yayin)
+            veri["imza"] = yayin.imza()
             veri["eklenme"] = simdi
             try:
                 imlec.execute(
-                    """INSERT INTO kayitlar
-                       (kisi, yil, ay, tarih, odeme_turu, eser, kanal, adet, brut, kesinti, net,
+                    """INSERT INTO yayinlar
+                       (kisi, yil, ay, sira, baslik, dergi, yazarlar, doi, quartile, tarih,
+                        index_link, kontrol, tutar, para_birimi, usd_karsiligi, onayli,
                         kaynak, imza, eklenme)
-                       VALUES (:kisi,:yil,:ay,:tarih,:odeme_turu,:eser,:kanal,:adet,:brut,:kesinti,
-                               :net,:kaynak,:imza,:eklenme)""", veri)
+                       VALUES (:kisi,:yil,:ay,:sira,:baslik,:dergi,:yazarlar,:doi,:quartile,
+                               :tarih,:index_link,:kontrol,:tutar,:para_birimi,:usd_karsiligi,
+                               :onayli,:kaynak,:imza,:eklenme)""", veri)
                 eklenen += 1
             except sqlite3.IntegrityError:
                 atlanan += 1
         imlec.execute(
-            """INSERT INTO aktarimlar (dosya, sayfa, mod, eklenen, atlanan, silinen, hatali, zaman)
+            """INSERT INTO aktarimlar (dosya, sayfa, yil, ay, eklenen, silinen, atlanan, zaman)
                VALUES (?,?,?,?,?,?,?,?)""",
-            (dosya, sayfa, mod, eklenen, atlanan, silinen, hatali, simdi))
+            (dosya, sayfa, yil, ay, eklenen, silinen, atlanan, simdi))
         self.baglanti.commit()
-        return {"eklenen": eklenen, "atlanan": atlanan, "silinen": silinen, "hatali": hatali}
+        return {"eklenen": eklenen, "silinen": silinen, "atlanan": atlanan}
 
     def donem_sil(self, yil: int, ay: int | None = None) -> int:
         imlec = self.baglanti.cursor()
         if ay:
-            imlec.execute("DELETE FROM kayitlar WHERE yil=? AND ay=?", (yil, ay))
+            imlec.execute("DELETE FROM yayinlar WHERE yil=? AND ay=?", (yil, ay))
         else:
-            imlec.execute("DELETE FROM kayitlar WHERE yil=?", (yil,))
+            imlec.execute("DELETE FROM yayinlar WHERE yil=?", (yil,))
         self.baglanti.commit()
         return imlec.rowcount
 
-    def hepsini_sil(self) -> int:
+    def kural_kaydet(self, kisi: str, para_birimi: str | None):
+        if para_birimi:
+            self.baglanti.execute(
+                "INSERT OR REPLACE INTO kisi_kurallari (kisi, para_birimi) VALUES (?,?)",
+                (temiz_ad(kisi), para_birimi))
+        else:
+            self.baglanti.execute("DELETE FROM kisi_kurallari WHERE kisi=?", (temiz_ad(kisi),))
+        self.baglanti.commit()
+
+    def kurallar(self) -> dict:
+        return {s["kisi"]: s["para_birimi"]
+                for s in self.baglanti.execute("SELECT kisi, para_birimi FROM kisi_kurallari")}
+
+    def kural_uygula(self, kisi: str, para_birimi: str) -> int:
+        """Kurali gecmis kayitlara da uygular (para birimini toptan gunceller)."""
         imlec = self.baglanti.cursor()
-        imlec.execute("DELETE FROM kayitlar")
+        imlec.execute("UPDATE yayinlar SET para_birimi=? WHERE kisi=?", (para_birimi, kisi))
         self.baglanti.commit()
         return imlec.rowcount
-
-    def profil_kaydet(self, ad: str, esleme: dict, baslik_satiri: int = 1):
-        import json
-        self.baglanti.execute(
-            "INSERT OR REPLACE INTO profiller (ad, esleme, baslik_satiri, guncelleme) VALUES (?,?,?,?)",
-            (ad, json.dumps(esleme), baslik_satiri, datetime.now().isoformat(timespec="seconds")))
-        self.baglanti.commit()
-
-    def profiller(self):
-        import json
-        satirlar = self.baglanti.execute(
-            "SELECT ad, esleme, baslik_satiri FROM profiller ORDER BY ad").fetchall()
-        return {s["ad"]: (json.loads(s["esleme"]), s["baslik_satiri"]) for s in satirlar}
 
     # -- okuma ------------------------------------------------------------- #
 
-    def _kosul(self, yil=None, ay=None, kisi=None, odeme_turu=None, arama=None):
+    def _kosul(self, yil=None, ay=None, kisi=None, para_birimi=None, quartile=None,
+               sadece_onayli=False, arama=None):
         kosullar, degerler = [], []
         if yil:
             kosullar.append("yil = ?"); degerler.append(int(yil))
@@ -480,114 +506,174 @@ class Veritabani:
             kosullar.append("ay = ?"); degerler.append(int(ay))
         if kisi:
             kosullar.append("kisi = ?"); degerler.append(kisi)
-        if odeme_turu:
-            kosullar.append("odeme_turu = ?"); degerler.append(odeme_turu)
+        if para_birimi:
+            kosullar.append("para_birimi = ?"); degerler.append(para_birimi)
+        if quartile:
+            kosullar.append("quartile = ?"); degerler.append(quartile)
+        if sadece_onayli:
+            kosullar.append("onayli = 1")
         if arama:
-            kosullar.append("(kisi LIKE ? OR eser LIKE ? OR kanal LIKE ? OR odeme_turu LIKE ?)")
-            degerler += [f"%{arama}%"] * 4
+            kosullar.append("(kisi LIKE ? OR baslik LIKE ? OR dergi LIKE ? OR doi LIKE ? "
+                            "OR yazarlar LIKE ? OR kontrol LIKE ?)")
+            degerler += [f"%{arama}%"] * 6
         return ("WHERE " + " AND ".join(kosullar) if kosullar else ""), degerler
+
+    def donemler(self):
+        return [(s["yil"], s["ay"]) for s in self.baglanti.execute(
+            "SELECT DISTINCT yil, ay FROM yayinlar ORDER BY yil, ay")]
 
     def yillar(self):
         return [s[0] for s in self.baglanti.execute(
-            "SELECT DISTINCT yil FROM kayitlar ORDER BY yil DESC")]
+            "SELECT DISTINCT yil FROM yayinlar ORDER BY yil DESC")]
 
     def kisiler(self):
         return [s[0] for s in self.baglanti.execute(
-            "SELECT DISTINCT kisi FROM kayitlar ORDER BY kisi")]
+            "SELECT DISTINCT kisi FROM yayinlar ORDER BY kisi")]
 
-    def odeme_turleri(self):
+    def kullanilan_para_birimleri(self):
         return [s[0] for s in self.baglanti.execute(
-            "SELECT DISTINCT odeme_turu FROM kayitlar ORDER BY odeme_turu")]
+            "SELECT DISTINCT para_birimi FROM yayinlar ORDER BY para_birimi")]
 
     def genel_ozet(self, **filtre):
         kosul, degerler = self._kosul(**filtre)
         satir = self.baglanti.execute(
-            f"""SELECT COUNT(*) kayit, COUNT(DISTINCT kisi) kisi_sayisi,
-                       COALESCE(SUM(adet),0) adet, COALESCE(SUM(brut),0) brut,
-                       COALESCE(SUM(kesinti),0) kesinti, COALESCE(SUM(net),0) net
-                FROM kayitlar {kosul}""", degerler).fetchone()
-        return dict(satir)
+            f"""SELECT COUNT(*) kayit, COALESCE(SUM(onayli),0) onayli,
+                       COUNT(DISTINCT kisi) kisi_sayisi,
+                       COALESCE(SUM(usd_karsiligi),0) usd_karsiligi
+                FROM yayinlar {kosul}""", degerler).fetchone()
+        ozet = dict(satir)
+        ozet["para"] = {s["para_birimi"]: s["toplam"] for s in self.baglanti.execute(
+            f"""SELECT para_birimi, COALESCE(SUM(tutar),0) toplam
+                FROM yayinlar {kosul} GROUP BY para_birimi ORDER BY toplam DESC""", degerler)}
+        return ozet
 
     def kisi_ozet(self, **filtre):
-        """Kisi bazinda toplamlar (net'e gore azalan)."""
+        """Kisi bazinda: kayit / onayli sayisi ve para birimi kirilimli toplamlar."""
+        kosul, degerler = self._kosul(**filtre)
+        birimler = self.kullanilan_para_birimleri() or ["USD"]
+        secmeler = ", ".join(
+            f"COALESCE(SUM(CASE WHEN para_birimi='{b}' THEN tutar END),0) AS \"{b}\""
+            for b in birimler)
+        satirlar = [dict(s) for s in self.baglanti.execute(
+            f"""SELECT kisi, COUNT(*) kayit, COALESCE(SUM(onayli),0) onayli,
+                       COALESCE(SUM(usd_karsiligi),0) usd_karsiligi, {secmeler}
+                FROM yayinlar {kosul} GROUP BY kisi ORDER BY usd_karsiligi DESC, kisi""",
+            degerler)]
+        return birimler, satirlar
+
+    def donem_ozet(self, **filtre):
+        kosul, degerler = self._kosul(**filtre)
+        birimler = self.kullanilan_para_birimleri() or ["USD"]
+        secmeler = ", ".join(
+            f"COALESCE(SUM(CASE WHEN para_birimi='{b}' THEN tutar END),0) AS \"{b}\""
+            for b in birimler)
+        satirlar = [dict(s) for s in self.baglanti.execute(
+            f"""SELECT yil, ay, COUNT(*) kayit, COALESCE(SUM(onayli),0) onayli,
+                       COUNT(DISTINCT kisi) kisi_sayisi,
+                       COALESCE(SUM(usd_karsiligi),0) usd_karsiligi, {secmeler}
+                FROM yayinlar {kosul} GROUP BY yil, ay ORDER BY yil, ay""", degerler)]
+        return birimler, satirlar
+
+    def kirilim(self, alan: str, **filtre):
+        """quartile / para_birimi / dergi / tutar bazinda dagilim."""
+        if alan not in ("quartile", "para_birimi", "dergi", "tutar", "kisi"):
+            raise ValueError("Gecersiz kirilim alani")
         kosul, degerler = self._kosul(**filtre)
         return [dict(s) for s in self.baglanti.execute(
-            f"""SELECT kisi, COUNT(*) kayit, COALESCE(SUM(adet),0) adet,
-                       COALESCE(SUM(brut),0) brut, COALESCE(SUM(kesinti),0) kesinti,
-                       COALESCE(SUM(net),0) net
-                FROM kayitlar {kosul} GROUP BY kisi ORDER BY net DESC""", degerler)]
+            f"""SELECT COALESCE(NULLIF({alan},''),'(bos)') anahtar, COUNT(*) kayit,
+                       COALESCE(SUM(onayli),0) onayli, COUNT(DISTINCT kisi) kisi_sayisi,
+                       COALESCE(SUM(tutar),0) tutar, COALESCE(SUM(usd_karsiligi),0) usd_karsiligi
+                FROM yayinlar {kosul} GROUP BY anahtar ORDER BY usd_karsiligi DESC, kayit DESC""",
+            degerler)]
 
-    def odeme_ozet(self, **filtre):
-        kosul, degerler = self._kosul(**filtre)
-        return [dict(s) for s in self.baglanti.execute(
-            f"""SELECT odeme_turu, COUNT(*) kayit, COUNT(DISTINCT kisi) kisi_sayisi,
-                       COALESCE(SUM(adet),0) adet, COALESCE(SUM(brut),0) brut,
-                       COALESCE(SUM(kesinti),0) kesinti, COALESCE(SUM(net),0) net
-                FROM kayitlar {kosul} GROUP BY odeme_turu ORDER BY net DESC""", degerler)]
-
-    def aylik_seri(self, **filtre):
-        """Donem bazinda (yil, ay) toplamlar."""
-        kosul, degerler = self._kosul(**filtre)
-        return [dict(s) for s in self.baglanti.execute(
-            f"""SELECT yil, ay, COUNT(*) kayit, COUNT(DISTINCT kisi) kisi_sayisi,
-                       COALESCE(SUM(adet),0) adet, COALESCE(SUM(brut),0) brut,
-                       COALESCE(SUM(kesinti),0) kesinti, COALESCE(SUM(net),0) net
-                FROM kayitlar {kosul} GROUP BY yil, ay ORDER BY yil, ay""", degerler)]
-
-    def pivot(self, satir_alani: str = "kisi", yil: int | None = None,
-              olcu: str = "net", **filtre):
-        """Satir = kisi/odeme_turu/kanal, sutun = aylar. (basliklar, satirlar) doner."""
-        if satir_alani not in ("kisi", "odeme_turu", "kanal", "eser"):
+    def pivot(self, satir_alani: str = "kisi", olcu: str = "tutar", yil: int | None = None,
+              **filtre):
+        """Satir = kisi/quartile/dergi/para_birimi, sutun = donemler + yil toplamlari."""
+        if satir_alani not in ("kisi", "quartile", "dergi", "para_birimi"):
             raise ValueError("Gecersiz satir alani")
-        if olcu not in ("net", "brut", "kesinti", "adet"):
-            raise ValueError("Gecersiz olcu")
+        ifade = {"tutar": "COALESCE(SUM(tutar),0)",
+                 "usd_karsiligi": "COALESCE(SUM(usd_karsiligi),0)",
+                 "yayin": "COUNT(*)",
+                 "onayli": "COALESCE(SUM(onayli),0)"}[olcu]
         filtre.pop("yil", None)
         kosul, degerler = self._kosul(yil=yil, **filtre)
         ham = self.baglanti.execute(
-            f"""SELECT {satir_alani} anahtar, yil, ay, COALESCE(SUM({olcu}),0) deger
-                FROM kayitlar {kosul} GROUP BY anahtar, yil, ay""", degerler).fetchall()
-        if yil:
-            sutunlar = list(range(1, 13))
-            sutun_basliklari = AY_ADLARI[:]
-            anahtarla = lambda s: s["ay"] if 1 <= s["ay"] <= 12 else None
-        else:
-            donemler = sorted({(s["yil"], s["ay"]) for s in ham})
-            sutunlar = donemler
-            sutun_basliklari = [donem_etiketi(y, a) for y, a in donemler]
-            anahtarla = lambda s: (s["yil"], s["ay"])
-        indeks = {s: i for i, s in enumerate(sutunlar)}
+            f"""SELECT COALESCE(NULLIF({satir_alani},''),'(bos)') anahtar, yil, ay,
+                       {ifade} deger
+                FROM yayinlar {kosul} GROUP BY anahtar, yil, ay ORDER BY yil, ay""",
+            degerler).fetchall()
+        donemler = sorted({(s["yil"], s["ay"]) for s in ham})
+        yillar = sorted({y for y, _ in donemler})
+        indeks = {d: i for i, d in enumerate(donemler)}
         tablo = {}
         for s in ham:
-            sutun = anahtarla(s)
-            if sutun is None:
-                continue
-            satir = tablo.setdefault(s["anahtar"], [0.0] * len(sutunlar))
-            satir[indeks[sutun]] += float(s["deger"] or 0)
-        satirlar = [[ad] + degerler_ + [sum(degerler_)] for ad, degerler_ in tablo.items()]
+            satir = tablo.setdefault(s["anahtar"], [0.0] * len(donemler))
+            satir[indeks[(s["yil"], s["ay"])]] += float(s["deger"] or 0)
+        satirlar = []
+        for ad, degerler_ in tablo.items():
+            yil_toplam = [sum(d for (y, _), d in zip(donemler, degerler_) if y == yil_)
+                          for yil_ in yillar]
+            satirlar.append([ad] + degerler_ + yil_toplam + [sum(degerler_)])
         satirlar.sort(key=lambda r: r[-1], reverse=True)
-        etiket = {"kisi": "Kisi", "odeme_turu": "Odeme turu",
-                  "kanal": "Kanal", "eser": "Eser"}[satir_alani]
-        return [etiket] + sutun_basliklari + ["Toplam"], satirlar
+        etiket = {"kisi": "Kisi", "quartile": "Quartile",
+                  "dergi": "Dergi", "para_birimi": "Para birimi"}[satir_alani]
+        basliklar = ([etiket] + [f"{AY_ADLARI[a-1]} {y}" for y, a in donemler]
+                     + [str(y) for y in yillar] + ["Toplam"])
+        return basliklar, satirlar, len(donemler)
 
-    def kayitlar(self, limit: int = 2000, **filtre):
+    def kayitlar(self, limit: int = 5000, **filtre):
         kosul, degerler = self._kosul(**filtre)
         return [dict(s) for s in self.baglanti.execute(
-            f"""SELECT id, kisi, yil, ay, tarih, odeme_turu, eser, kanal, adet, brut, kesinti, net,
-                       kaynak
-                FROM kayitlar {kosul} ORDER BY yil DESC, ay DESC, kisi LIMIT ?""",
+            f"""SELECT * FROM yayinlar {kosul}
+                ORDER BY yil DESC, ay DESC, kisi, CAST(sira AS INTEGER) LIMIT ?""",
             degerler + [limit])]
 
-    def kisi_yillik(self, kisi: str):
-        """Bir kisinin yil bazinda ve odeme turu bazinda dokumu."""
+    def kisi_detay(self, kisi: str):
         yillik = [dict(s) for s in self.baglanti.execute(
-            """SELECT yil, COALESCE(SUM(brut),0) brut, COALESCE(SUM(kesinti),0) kesinti,
-                      COALESCE(SUM(net),0) net, COUNT(*) kayit
-               FROM kayitlar WHERE kisi=? GROUP BY yil ORDER BY yil DESC""", (kisi,))]
-        turler = [dict(s) for s in self.baglanti.execute(
-            """SELECT odeme_turu, COALESCE(SUM(net),0) net, COUNT(*) kayit
-               FROM kayitlar WHERE kisi=? GROUP BY odeme_turu ORDER BY net DESC""", (kisi,))]
-        return yillik, turler
+            """SELECT yil, COUNT(*) kayit, COALESCE(SUM(onayli),0) onayli,
+                      COALESCE(SUM(usd_karsiligi),0) usd_karsiligi
+               FROM yayinlar WHERE kisi=? GROUP BY yil ORDER BY yil DESC""", (kisi,))]
+        aylik = [dict(s) for s in self.baglanti.execute(
+            """SELECT yil, ay, COUNT(*) kayit, COALESCE(SUM(onayli),0) onayli,
+                      COALESCE(SUM(tutar),0) tutar, para_birimi
+               FROM yayinlar WHERE kisi=? GROUP BY yil, ay, para_birimi
+               ORDER BY yil DESC, ay DESC""", (kisi,))]
+        return yillik, aylik
 
     def son_aktarimlar(self, limit: int = 20):
         return [dict(s) for s in self.baglanti.execute(
             "SELECT * FROM aktarimlar ORDER BY id DESC LIMIT ?", (limit,))]
+
+
+# --------------------------------------------------------------------------- #
+# Excel cikti
+# --------------------------------------------------------------------------- #
+
+def excel_yaz(dosya: str, basliklar, satirlar, sayfa_adi: str = "Rapor",
+              sayi_kolonlari=None, baslik_notu: str | None = None):
+    sayi_kolonlari = set(sayi_kolonlari or [])
+    kitap = Workbook()
+    calisma = kitap.active
+    calisma.title = (sayfa_adi or "Rapor")[:31]
+    ilk = 1
+    if baslik_notu:
+        calisma.cell(row=1, column=1, value=baslik_notu).font = Font(bold=True, size=12)
+        ilk = 3
+    dolgu = PatternFill("solid", fgColor="DDE7F0")
+    for j, baslik in enumerate(basliklar, start=1):
+        hucre = calisma.cell(row=ilk, column=j, value=baslik)
+        hucre.font = Font(bold=True)
+        hucre.fill = dolgu
+        hucre.alignment = Alignment(horizontal="center", wrap_text=True)
+    for i, satir in enumerate(satirlar, start=ilk + 1):
+        for j, deger in enumerate(satir, start=1):
+            hucre = calisma.cell(row=i, column=j, value=deger)
+            if (j - 1) in sayi_kolonlari and isinstance(deger, (int, float)):
+                hucre.number_format = '#,##0'
+    for j, baslik in enumerate(basliklar, start=1):
+        genislik = max([len(str(baslik))] +
+                       [len(str(s[j-1])) for s in satirlar[:200] if len(s) >= j]) + 2
+        calisma.column_dimensions[get_column_letter(j)].width = min(max(genislik, 10), 45)
+    calisma.freeze_panes = calisma.cell(row=ilk + 1, column=2)
+    kitap.save(dosya)
+    return dosya

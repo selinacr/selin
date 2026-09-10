@@ -1,84 +1,77 @@
-# Yayin Takip
+# Adjunct Yayin Takip
 
-Aylik yayin Excel'lerini ice aktarip **kisi bazinda** ve **odeme bazinda**
-aylik/yillik guncel raporlar veren masaustu uygulamasi (Python + tkinter).
-Veriler yerel bir SQLite dosyasinda birikir; her ay yeni Excel'i aktardikca
-raporlar guncellenir.
+Her ay gelen "AGUSTOS 2026 Yayinlari" bicimindeki Excel dosyasini okuyup
+**kisi bazinda** ve **odeme bazinda** aylik/yillik raporlari guncel tutan
+masaustu uygulamasi (Python + tkinter). Veriler yerel bir SQLite dosyasinda
+birikir; yeni ayi yukledikce butun tablolar kendiliginden guncellenir.
 
-## Kurulum
+## Kurulum (Anaconda)
 
-### Anaconda ile (Windows'ta en kolayi)
-
-Anaconda'da tkinter ve openpyxl zaten kuruludur, ek kurulum gerekmez:
-
-1. Baslat menusunden **Anaconda Prompt**'u ac.
-2. Klasore gec ve calistir:
+Anaconda'da tkinter ve openpyxl hazir gelir:
 
 ```bat
-cd C:\...\selin\yayin-takip
+cd C:\...\yayin-takip
 python app.py
 ```
 
-Modul eksigi cikarsa: `conda install openpyxl`.
-`calistir.bat` dosyasini cift tiklamak da ayni isi yapar (Anaconda'yi PATH'e
-eklemediysen dosyayi Anaconda Prompt icinden `calistir.bat` diye cagir).
+Modul eksigi cikarsa `conda install openpyxl`. Anaconda disinda:
+`pip install -r requirements.txt` (Linux'ta ayrica `sudo apt install python3-tk`).
 
-### Diger kurulumlar
+Ornek ay dosyasi uretmek icin: `python ornek_veri.py`.
 
-```bash
-pip install -r requirements.txt      # sadece openpyxl
-python app.py
+## Beklenen dosya duzeni
+
+```
+AGUSTOS 2026 Yayinlari                              <- donem buradan okunur
+<Kisi Adi>                                          <- bolum basligi
+Sıra | Article Title | Journal / Conference | Authors | DOI | Quartile |
+       Date | Index Link | Kontrol | Payments
+1    | ...                                                     |  431
+                                        Toplam |     |  1293   <- kontrol amacli
+...
+OZET / SUMMARY                                      <- kisi bazinda toplamlar
 ```
 
-Python 3.10+ gerekir. tkinter Windows/macOS kurulumlarinda hazir gelir;
-Linux'ta `sudo apt install python3-tk`.
-
-## Her ay ne yapacaksin
-
-Yeni ayin Excel'ini "1) Excel ice aktar" sekmesinden sec → profilini yukle →
-"Veritabanina aktar". Eski aylar veritabaninda durdugu icin butun raporlar
-(kisi, odeme turu, aylik, yillik) otomatik guncellenir; ayni dosyayi yanlislikla
-iki kez aktarirsan mukerrer kayit olusmaz. Bir ayin duzeltilmis surumu gelirse
-"Donemleri sil ve yeniden yaz" secenegini kullan.
-
-Denemek icin ornek dosya: `python ornek_veri.py` → `ornek_yayin.xlsx`.
+- **Donem** baslik satirindan (yoksa dosya adindan) okunur; arayuzde ay/yil
+  acilir listesinden degistirilebilir. Tum kayitlar dosyanin ayina yazilir;
+  `Date` sutunu yayinin kendi tarihidir, sadece bilgi olarak saklanir.
+- **Kisi**, tek hucreli bolum basligi satirlarindan alinir (basindaki satir
+  sonu, fazla bosluk temizlenir).
+- **Payments** bos ise kayit "odemesi yok" sayilir; sayilar ve odemeli kayit
+  sayisi ayri ayri raporlanir.
+- **Para birimi**, `Kontrol` notundan belirlenir: `500/1.1595 (EUR/USD
+  Paritesi)` gibi bir not varsa tutar **EUR**'dur ve notun payi (500) USD
+  karsiligi olarak saklanir; not "Cin Yuani/CNY" diyorsa **CNY**; not yoksa
+  **USD**. Bir kisi her zaman ayni birimde odeniyorsa kisi detay penceresinden
+  kural tanimlanabilir (istege bagli olarak gecmis kayitlara da uygulanir).
+- Bolumlerdeki `Toplam` ve `OZET` satirlari hesaba katilmaz; satirlardan
+  hesaplanan toplam dosyadakinden farkliysa aktarim gunlugunde uyari cikar
+  (Agustos 2026 dosyasinda Vladimir Simic satirinda oldugu gibi).
 
 ## Kullanim
 
-1. **Excel ice aktar**: dosyayi ve sayfayi sec. Baslik satiri ve kolonlar
-   otomatik tahmin edilir (Tarih, Ad Soyad, Odeme Turu, Brut, Kesinti, Net...);
-   yanlissa acilir listelerden duzelt, "Eslemeyi kaydet" ile profil olarak sakla —
-   sonraki ay tek tikla yuklenir. Onizlemeyi kontrol edip "Veritabanina aktar".
-   - *Ayni kayitlari atla*: mukerrer satirlar iki kez yazilmaz (varsayilan).
-   - *Donemleri sil ve yeniden yaz*: duzeltilmis bir ay dosyasi geldiginde kullan.
-2. **Kisi bazinda**: yil/ay filtresi, kisi toplamlari veya kisi × ay pivotu
-   (net/brut/kesinti/adet olcusu secilebilir). Kisiye cift tiklayinca yillik ve
-   odeme turu dokumu acilir.
-3. **Odeme bazinda**: odeme turu toplamlari, odeme turu × ay pivotu, kanal pivotu.
-4. **Aylik / yillik**: donem serisi ve yil toplamlari; kisi ve odeme turu filtreli.
-5. **Kayitlar**: ham satirlar, arama, donem silme.
+1. **Ayin Excel'ini yukle**: dosyayi sec, donemi dogrula, onizlemeyi kontrol et,
+   "Veritabanina aktar". Ayni ay tekrar yuklenirse o ayin verisi silinip
+   yeniden yazilir (mukerrer kayit olusmaz).
+2. **Kisi bazinda**: kisi x ay pivotu veya toplam ozet. Olcu secilebilir:
+   odeme tutari, USD karsiligi, kayit sayisi, odemeli yayin sayisi. Filtreler:
+   yil, ay, para birimi, sadece odemesi olanlar, serbest arama. Kisiye cift
+   tiklayinca yillik/aylik dokum ve para birimi kurali acilir.
+3. **Odeme bazinda**: para birimi, odeme tutari (500/450/400...), quartile ve
+   dergi kirilimlari; quartile x ay pivotu.
+4. **Aylik / yillik**: donem serisi ve yil toplamlari, kisi filtresiyle.
+5. **Kayitlar**: ham satirlar, arama, secili donemi silme.
 
-Her sekmedeki tablo "Excel'e aktar" ile bicimli bir rapor dosyasina yazilir.
-
-## Beklenen Excel yapisi
-
-Zorunlu iki alan: **kisi** ve **tarih/donem**. Digerleri (odeme turu, eser,
-kanal, adet, brut, kesinti, net) varsa kullanilir. Net bos ise `brut - kesinti`
-olarak hesaplanir.
-
-- Tarih bicimleri: `15.03.2026`, `2026-03-15`, `03.2026`, `Mart 2026`, `202603`.
-- Tutar bicimleri: `1.234,56 TL`, `1,234.56`, `(120,50)` (negatif).
-  Sadece nokta iceren ve son grubu 3 haneli olan degerler (`2.500`) binlik
-  ayraci kabul edilir.
+Her sekmedeki tablo "Excel'e aktar" ile bicimli bir rapora yazilir.
 
 ## Dosyalar
 
 | Dosya | Icerik |
 |---|---|
-| `core.py` | Excel okuma, kolon eslestirme, SQLite depo, ozet/pivot sorgulari |
+| `core.py` | Excel ayristirma, para birimi cozumu, SQLite depo, ozet/pivot sorgulari |
 | `app.py` | tkinter arayuzu |
-| `ornek_veri.py` | ornek Excel ureteci |
+| `ornek_veri.py` | ayni duzende ornek ay dosyasi ureteci |
 | `test_core.py` | cekirdek testleri (`python test_core.py`) |
 
 Veritabani varsayilan olarak ev dizininde `yayin_takip.db`; ust bardan
-degistirilebilir (yedek almak icin bu dosyayi kopyalamak yeterli).
+degistirilebilir, yedek almak icin bu dosyayi kopyalamak yeterli.
