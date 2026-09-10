@@ -1,0 +1,4 @@
+__pycache__/
+*.db
+ornek_yayin.xlsx
+*.xlsx
