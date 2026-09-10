@@ -1,0 +1,1232 @@
+<title>Adjunct Yayın Paneli</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --ground: #f4f6f3;
+    --surface: #ffffff;
+    --surface-2: #eaefeb;
+    --ink: #14201c;
+    --ink-soft: #5d6b64;
+    --line: #dde3dd;
+    --accent: #17564a;
+    --accent-ink: #ffffff;
+    --accent-soft: #e0ebe5;
+    --warn: #8a5f18;
+    --warn-soft: #f5ecda;
+    --radius: 10px;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: "IBM Plex Serif", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f1513;
+      --surface: #182120;
+      --surface-2: #1f2a27;
+      --ink: #e6ede9;
+      --ink-soft: #9aa8a2;
+      --line: #29352f;
+      --accent: #6cc0a5;
+      --accent-ink: #0c1512;
+      --accent-soft: #22332d;
+      --warn: #d9a44d;
+      --warn-soft: #2c2617;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0f1513;
+    --surface: #182120;
+    --surface-2: #1f2a27;
+    --ink: #e6ede9;
+    --ink-soft: #9aa8a2;
+    --line: #29352f;
+    --accent: #6cc0a5;
+    --accent-ink: #0c1512;
+    --accent-soft: #22332d;
+    --warn: #d9a44d;
+    --warn-soft: #2c2617;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .sayfa {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 28px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* --- Başlık ve özet kutuları --- */
+  .tepe { display: flex; flex-wrap: wrap; gap: 20px 28px; align-items: flex-end; justify-content: space-between; }
+  .tepe h1 { font-family: var(--serif); font-size: 26px; letter-spacing: -0.01em; }
+  .alt-baslik { color: var(--ink-soft); margin-top: 4px; font-size: 13px; }
+  .kutular { display: flex; flex-wrap: wrap; gap: 10px; }
+  .kutu {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 10px 16px; min-width: 112px; text-align: right;
+  }
+  .kutu b { display: block; font-family: var(--mono); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .kutu span { display: block; color: var(--ink-soft); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .kutu.vurgu b { color: var(--accent); }
+
+  /* --- Filtreler --- */
+  .araclar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  .grup { display: flex; flex-wrap: wrap; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+  .grup button {
+    border: 0; background: transparent; border-radius: 999px; padding: 6px 14px;
+    cursor: pointer; color: var(--ink); white-space: nowrap;
+  }
+  .grup button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .grup.pasif { opacity: 0.45; }
+  .grup.pasif button { cursor: not-allowed; }
+  .anahtar { display: flex; align-items: center; gap: 7px; color: var(--ink-soft); cursor: pointer; }
+  .ara { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .ara input {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 14px; width: 230px; max-width: 46vw;
+  }
+  .dugme {
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    border-radius: 999px; padding: 7px 15px; cursor: pointer;
+  }
+  .dugme:hover { background: var(--accent-soft); }
+  .dugme.ana { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  .dugme.ana:hover { filter: brightness(1.08); }
+  .dugme.sessiz { border-color: transparent; background: transparent; color: var(--ink-soft); }
+
+  /* --- Tablo --- */
+  .kart { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+  .tablo-sarmal { overflow-x: auto; border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 9px 14px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  thead th {
+    position: sticky; top: 0; z-index: 2; background: var(--surface);
+    color: var(--ink-soft); font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  th.ad, td.ad {
+    position: sticky; left: 0; z-index: 1; background: var(--surface);
+    text-align: left; white-space: normal; min-width: 210px;
+  }
+  thead th.ad { z-index: 3; }
+  tbody tr:nth-child(even) td { background: var(--surface-2); }
+  tbody tr:nth-child(even) td.ad { background: var(--surface-2); }
+  tbody tr.tiklanir { cursor: pointer; }
+  tbody tr.tiklanir:hover td { background: var(--accent-soft); }
+  td.sayi, th.sayi { font-family: var(--mono); }
+  td.bos { color: var(--ink-soft); }
+  .yil-sutun { background: color-mix(in srgb, var(--accent-soft) 55%, transparent) !important; }
+  tfoot td { font-weight: 600; background: var(--accent-soft) !important; border-bottom: 0; }
+  tfoot td.ad { background: var(--accent-soft) !important; }
+  .rozet {
+    display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px;
+    background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line);
+  }
+  .rozet.bekleyen { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .kucuk-not { color: var(--ink-soft); font-size: 12px; }
+  .metin-hucre { white-space: normal; text-align: left; max-width: 320px; }
+
+  /* --- Yükleme kartı --- */
+  .yukle { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 18px; padding: 18px; }
+  @media (max-width: 720px) { .yukle { grid-template-columns: 1fr; } }
+  .birak {
+    border: 1.5px dashed var(--line); border-radius: var(--radius); padding: 22px 18px;
+    display: flex; flex-direction: column; gap: 10px; align-items: flex-start; justify-content: center;
+    background: var(--ground);
+  }
+  .birak.uzerinde { border-color: var(--accent); background: var(--accent-soft); }
+  .aylar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ay-etiket {
+    display: inline-flex; align-items: center; gap: 8px; background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 6px 5px 13px; font-size: 12px;
+  }
+  .ay-etiket button { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); padding: 0 5px; border-radius: 999px; }
+  .ay-etiket button:hover { color: var(--warn); }
+  .gunluk { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); white-space: pre-wrap; margin: 0; max-height: 132px; overflow-y: auto; }
+
+  /* --- Kişi çekmecesi --- */
+  .perde { position: fixed; inset: 0; background: rgba(8, 18, 15, 0.42); display: none; z-index: 10; }
+  .perde[data-acik="1"] { display: block; }
+  .cekmece {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 94vw); z-index: 11;
+    background: var(--surface); border-left: 1px solid var(--line); padding: 22px;
+    overflow-y: auto; display: none; flex-direction: column; gap: 16px;
+  }
+  .cekmece[data-acik="1"] { display: flex; }
+  .cekmece h2 { font-family: var(--serif); font-size: 21px; }
+  .satir { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bilgi { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 20;
+    background: var(--accent); color: var(--accent-ink); padding: 10px 18px; border-radius: 999px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.18); display: none; }
+  .bilgi[data-acik="1"] { display: block; }
+  .bos-durum { padding: 34px 22px; text-align: center; color: var(--ink-soft); }
+  @media (prefers-reduced-motion: no-preference) {
+    .bilgi { transition: opacity .2s ease; }
+  }
+</style>
+
+<div class="sayfa">
+  <header class="tepe">
+    <div>
+      <h1>Adjunct Yayın Paneli</h1>
+      <p class="alt-baslik" id="altBaslik">Yükleniyor…</p>
+    </div>
+    <div class="kutular" id="kutular"></div>
+  </header>
+
+  <section class="araclar" aria-label="Filtreler">
+    <div class="grup" id="yilGrubu" role="group" aria-label="Yıl"></div>
+    <div class="grup" id="olcuGrubu" role="group" aria-label="Ölçü"></div>
+    <div class="grup" id="paraGrubu" role="group" aria-label="Para birimi"></div>
+    <label class="anahtar" for="odemeliKutu">
+      <input type="checkbox" id="odemeliKutu"> Sadece ödemesi olanlar
+    </label>
+    <div class="ara">
+      <input type="search" id="aramaKutusu" placeholder="Kişi, makale, dergi, DOI…" aria-label="Ara">
+      <button class="dugme" id="disaAktarDugmesi">CSV indir</button>
+    </div>
+  </section>
+
+  <section class="araclar" aria-label="Görünüm">
+    <div class="grup" id="gorunumGrubu" role="group" aria-label="Görünüm"></div>
+    <span class="kucuk-not" id="gorunumNotu"></span>
+  </section>
+
+  <section class="kart">
+    <div class="tablo-sarmal" id="tabloSarmal">
+      <table id="tablo">
+        <thead id="tabloBasliklari"></thead>
+        <tbody id="tabloGovdesi"></tbody>
+        <tfoot id="tabloToplami"></tfoot>
+      </table>
+    </div>
+    <div class="bos-durum" id="bosDurum" hidden></div>
+  </section>
+
+  <section class="kart yukle">
+    <div>
+      <h3>Yeni ay dosyası</h3>
+      <p class="kucuk-not">Ayın Excel dosyasını sürükleyip bırak ya da seç. Aynı aya ait dosya
+        tekrar yüklenirse o ayın verisi güncellenir; diğer aylar korunur.</p>
+      <div class="birak" id="birakAlani">
+        <button class="dugme ana" id="dosyaDugmesi">Excel seç</button>
+        <input type="file" id="dosyaGirisi" accept=".xlsx,.xlsm,.xltx" hidden>
+        <span class="kucuk-not" id="dosyaDurumu">Henüz dosya seçilmedi.</span>
+        <div class="satir" id="donemSatiri" hidden>
+          <label class="kucuk-not" for="aySecimi">Dönem</label>
+          <select id="aySecimi"></select>
+          <select id="yilSecimi"></select>
+          <button class="dugme ana" id="kaydetDugmesi">Bu ayı kaydet</button>
+        </div>
+      </div>
+      <pre class="gunluk" id="gunluk" aria-live="polite"></pre>
+    </div>
+    <div>
+      <h3>Yüklü aylar</h3>
+      <p class="kucuk-not">Bir aya tıklayınca yalnızca o ay gösterilir; × ile o ayın verisi silinir.</p>
+      <div class="aylar" id="aylarListesi"></div>
+      <p class="kucuk-not" id="depoNotu"></p>
+    </div>
+  </section>
+</div>
+
+<div class="perde" id="perde"></div>
+<aside class="cekmece" id="cekmece" aria-label="Kişi detayı">
+  <div class="satir" style="justify-content: space-between;">
+    <h2 id="cekmeceBaslik"></h2>
+    <button class="dugme sessiz" id="cekmeceKapat">Kapat</button>
+  </div>
+  <p class="kucuk-not" id="cekmeceOzet"></p>
+  <div class="satir">
+    <label class="kucuk-not" for="kuralSecimi">Bu kişinin ödemeleri her zaman</label>
+    <select id="kuralSecimi"></select>
+    <span class="kucuk-not">para biriminde</span>
+  </div>
+  <div id="cekmeceIcerik"></div>
+</aside>
+<div class="bilgi" id="bilgiBaloncugu" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const AY_ADLARI = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                     "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+  const AY_ANAHTAR = {
+    ocak: 1, oca: 1, january: 1, jan: 1, subat: 2, sub: 2, february: 2, feb: 2,
+    mart: 3, mar: 3, march: 3, nisan: 4, nis: 4, april: 4, apr: 4, mayis: 5, may: 5,
+    haziran: 6, haz: 6, june: 6, jun: 6, temmuz: 7, tem: 7, july: 7, jul: 7,
+    agustos: 8, agu: 8, august: 8, aug: 8, eylul: 9, eyl: 9, september: 9, sept: 9, sep: 9,
+    ekim: 10, eki: 10, october: 10, oct: 10, kasim: 11, kas: 11, november: 11, nov: 11,
+    aralik: 12, ara: 12, december: 12, dec: 12,
+  };
+  const SUTUN_ANAHTARLARI = {
+    sira: ["sira", "no"],
+    baslik: ["article title", "title", "baslik", "makale", "yayin adi", "eser"],
+    dergi: ["journal", "conference", "dergi"],
+    yazarlar: ["authors", "author", "yazar"],
+    doi: ["doi"],
+    quartile: ["quartile", "quartil", "q index"],
+    tarih: ["date", "tarih"],
+    indexLink: ["index link", "index", "link", "scopus", "wos"],
+    kontrol: ["kontrol", "note", "not", "aciklama"],
+    odeme: ["payments", "payment", "odeme", "tutar", "ucret"],
+  };
+  const PARA_BIRIMLERI = ["USD", "EUR", "CNY", "TRY", "GBP"];
+  const OLCULER = [
+    ["tutar", "Ödeme tutarı"],
+    ["usd", "USD karşılığı"],
+    ["onayli", "Onaylı yayın"],
+    ["kayit", "Tüm kayıtlar"],
+  ];
+  const GORUNUMLER = [
+    ["kisi", "Kişi × ay"],
+    ["ozet", "Kişi özeti"],
+    ["quartile", "Quartile × ay"],
+    ["dergi", "Dergi"],
+    ["dagilim", "Ödeme dağılımı"],
+    ["kayitlar", "Kayıtlar"],
+  ];
+
+  /* ------------------------------------------------------------------ */
+  /* Yardımcılar                                                         */
+  /* ------------------------------------------------------------------ */
+
+  const sade = (deger) => String(deger ?? "")
+    .toLocaleLowerCase("tr")
+    .replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g")
+    .replace(/ü/g, "u").replace(/ö/g, "o").replace(/ç/g, "c").replace(/â/g, "a")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+
+  const temizAd = (deger) => String(deger ?? "").replace(/\s+/g, " ").trim();
+
+  function sayiyaCevir(deger) {
+    if (deger === null || deger === undefined || deger === "") return null;
+    if (typeof deger === "number") return Number.isFinite(deger) ? deger : null;
+    if (deger instanceof Date) return null;
+    let metin = String(deger).trim();
+    if (!metin) return null;
+    const negatif = metin.startsWith("(") && metin.endsWith(")");
+    metin = metin.replace(/[()]/g, "").replace(/ /g, "").replace(/\s/g, "")
+      .replace(/(tl|try|₺|\$|eur|€|usd|cny|¥|gbp|£)/gi, "");
+    if (metin.includes(",") && metin.includes(".")) {
+      metin = metin.lastIndexOf(",") > metin.lastIndexOf(".")
+        ? metin.replace(/\./g, "").replace(",", ".")
+        : metin.replace(/,/g, "");
+    } else if (metin.includes(",")) {
+      metin = metin.replace(/\./g, "").replace(",", ".");
+    } else if (metin.includes(".")) {
+      const parcalar = metin.split(".");
+      // "2.500" gibi son grubu üç haneli değerler binlik ayracıdır.
+      if (parcalar.length > 2 || (parcalar[parcalar.length - 1].length === 3 && /^-?\d+$/.test(parcalar[0]))) {
+        metin = parcalar.join("");
+      }
+    }
+    metin = metin.replace(/[^0-9.\-]/g, "");
+    const sonuc = Number.parseFloat(metin);
+    if (!Number.isFinite(sonuc)) return null;
+    return negatif ? -sonuc : sonuc;
+  }
+
+  function tarihMetni(deger) {
+    if (deger === null || deger === undefined) return "";
+    if (deger instanceof Date) return deger.toISOString().slice(0, 10);
+    return String(deger).replace(/\s+/g, " ").trim();
+  }
+
+  function donemCoz(metin) {
+    const duz = sade(metin);
+    if (!duz) return null;
+    const yilBul = duz.match(/\b(20\d{2})\b/);
+    for (const [anahtar, ay] of Object.entries(AY_ANAHTAR)) {
+      if (new RegExp(`\\b${anahtar}`).test(duz) && yilBul) {
+        return { yil: Number(yilBul[1]), ay };
+      }
+    }
+    const sayisal = duz.match(/\b(20\d{2})\s?(0[1-9]|1[0-2])\b/);
+    if (sayisal) return { yil: Number(sayisal[1]), ay: Number(sayisal[2]) };
+    return null;
+  }
+
+  const donemAnahtari = (yil, ay) => `${yil}-${String(ay).padStart(2, "0")}`;
+  const donemEtiketi = (yil, ay) => `${AY_ADLARI[ay - 1]} ${yil}`;
+
+  function paraBirimiCoz(kontrol, kisi, kurallar) {
+    const not = sade(kontrol);
+    const parite = String(kontrol ?? "").match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)/);
+    const usdKarsiligi = parite ? sayiyaCevir(parite[1]) : null;
+    const zorlanan = kurallar[temizAd(kisi)];
+    if (zorlanan) return { paraBirimi: zorlanan, usdKarsiligi };
+    if (/\b(cny|yuan|yuani|rmb|cin)\b/.test(not)) return { paraBirimi: "CNY", usdKarsiligi };
+    if (not.includes("eur") || not.includes("parite") || not.includes("paraite")) {
+      return { paraBirimi: "EUR", usdKarsiligi };
+    }
+    return { paraBirimi: "USD", usdKarsiligi };
+  }
+
+  const bicimci = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 });
+  const bicim = (deger) => (deger === null || deger === undefined || deger === "" ? "" : bicimci.format(deger));
+  const bicimSifirsiz = (deger) => (!deger ? "·" : bicimci.format(deger));
+
+  /* ------------------------------------------------------------------ */
+  /* Excel ayrıştırma                                                    */
+  /* ------------------------------------------------------------------ */
+
+  function sutunHaritasi(satir) {
+    const harita = {};
+    satir.forEach((hucre, i) => {
+      const duz = sade(hucre);
+      if (!duz) return;
+      for (const [alan, anahtarlar] of Object.entries(SUTUN_ANAHTARLARI)) {
+        if (alan in harita) continue;
+        if (anahtarlar.some((a) => { const s = sade(a); return duz === s || duz.startsWith(s) || duz.includes(s); })) {
+          harita[alan] = i;
+          break;
+        }
+      }
+    });
+    return harita;
+  }
+
+  const hucreMetni = (satir, harita, alan) => {
+    const i = harita[alan];
+    if (i === undefined || satir[i] === null || satir[i] === undefined) return "";
+    return String(satir[i]).replace(/\s+/g, " ").trim();
+  };
+
+  /** Bölümlü ay dosyasını ayrıştırır: kişi başlığı → tablo → Toplam → ÖZET. */
+  function dosyayiAyristir(satirlar, dosyaAdi, secilenDonem) {
+    const uyarilar = [];
+    let donem = secilenDonem || null;
+    if (!donem) {
+      for (const satir of satirlar.slice(0, 5)) {
+        for (const hucre of satir) {
+          const cozulen = donemCoz(hucre);
+          if (cozulen) { donem = cozulen; break; }
+        }
+        if (donem) break;
+      }
+    }
+    if (!donem) donem = donemCoz(dosyaAdi);
+    if (!donem) {
+      throw new Error("Dosyanın dönemi bulunamadı. Başlık satırında \"AĞUSTOS 2026 Yayınları\" "
+        + "gibi bir ifade yoksa dönemi aşağıdan elle seçin.");
+    }
+
+    const kayitlar = [];
+    const ozet = {};
+    let harita = {};
+    let kisi = "";
+    let ozetBolumu = false;
+
+    satirlar.forEach((ham, indeks) => {
+      const satir = Array.isArray(ham) ? ham : [];
+      const metinler = satir.map((h) => (h === null || h === undefined ? "" : String(h).trim()));
+      const dolu = metinler.filter((m) => m);
+      if (!dolu.length) return;
+      const birlesik = sade(dolu.join(" "));
+
+      if (birlesik.includes("ozet") || birlesik.includes("summary")) { ozetBolumu = true; return; }
+      if (ozetBolumu) {
+        if (dolu.length >= 2) {
+          const tutar = sayiyaCevir(dolu[dolu.length - 1]);
+          const ad = temizAd(dolu[dolu.length - 2]);
+          if (tutar !== null && ad && !["adjunct", "toplam odeme"].includes(sade(ad))) ozet[ad] = tutar;
+        }
+        return;
+      }
+
+      const ilk = sade(metinler[0] || "");
+      if (ilk === "sira" || ilk === "no" || (!Object.keys(harita).length && birlesik.includes("article title"))) {
+        harita = sutunHaritasi(metinler);
+        return;
+      }
+      if (birlesik.includes("toplam") && dolu.length <= 3) return;
+      if (dolu.length === 1 && metinler[0]) {
+        if (donemCoz(metinler[0]) || ilk.includes("yayin")) return;   // dosya başlığı
+        kisi = temizAd(metinler[0]);
+        return;
+      }
+      if (!kisi) return;
+      if (!Object.keys(harita).length) {
+        uyarilar.push(`${indeks + 1}. satır: başlık satırı bulunmadan veri geldi, atlandı.`);
+        return;
+      }
+
+      const baslik = hucreMetni(satir, harita, "baslik");
+      const doi = hucreMetni(satir, harita, "doi");
+      if (!baslik && !doi) return;
+      const tutarHucresi = harita.odeme === undefined ? null : satir[harita.odeme];
+      kayitlar.push({
+        kisi,
+        sira: hucreMetni(satir, harita, "sira"),
+        baslik,
+        dergi: hucreMetni(satir, harita, "dergi"),
+        yazarlar: hucreMetni(satir, harita, "yazarlar"),
+        doi,
+        quartile: hucreMetni(satir, harita, "quartile").toUpperCase(),
+        tarih: harita.tarih === undefined ? "" : tarihMetni(satir[harita.tarih]),
+        indexLink: hucreMetni(satir, harita, "indexLink"),
+        kontrol: hucreMetni(satir, harita, "kontrol"),
+        tutar: sayiyaCevir(tutarHucresi),
+      });
+    });
+
+    if (!kayitlar.length) uyarilar.push("Dosyada kayıt bulunamadı; sayfa seçimini kontrol edin.");
+    for (const [ad, beyan] of Object.entries(ozet)) {
+      const hesap = kayitlar
+        .filter((k) => sade(k.kisi) === sade(ad))
+        .reduce((toplam, k) => toplam + (k.tutar || 0), 0);
+      if (Math.abs(hesap - beyan) > 0.5) {
+        uyarilar.push(`${ad}: dosyadaki özet ${bicim(beyan)}, satırlardan hesaplanan ${bicim(hesap)} `
+          + "(satırlar esas alındı).");
+      }
+    }
+    return { donem, kayitlar, ozet, uyarilar };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Durum                                                               */
+  /* ------------------------------------------------------------------ */
+
+  const durum = {
+    aylar: new Map(),        // "2026-08" -> {yil, ay, dosya, yuklenme, kayitlar}
+    kurallar: {},            // kişi -> para birimi
+    demo: false,
+    db: null,
+    yil: "tumu",
+    ay: "tumu",
+    olcu: "tutar",
+    para: "USD",
+    gorunum: "kisi",
+    arama: "",
+    sadeceOdemeli: false,
+    bekleyen: null,          // kaydedilmeyi bekleyen ayrıştırma sonucu
+    sonTablo: null,
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function bilgiVer(metin) {
+    const baloncuk = $("bilgiBaloncugu");
+    baloncuk.textContent = metin;
+    baloncuk.dataset.acik = "1";
+    clearTimeout(bilgiVer.zaman);
+    bilgiVer.zaman = setTimeout(() => { baloncuk.dataset.acik = "0"; }, 3200);
+  }
+
+  function gunlugeYaz(metin) {
+    const alan = $("gunluk");
+    alan.textContent = `${alan.textContent}${alan.textContent ? "\n" : ""}${metin}`;
+    alan.scrollTop = alan.scrollHeight;
+  }
+
+  /** Kayıtları para birimi kuralları uygulanmış düz listeye çevirir. */
+  function tumKayitlar() {
+    const sonuc = [];
+    for (const ay of durum.aylar.values()) {
+      for (const kayit of ay.kayitlar) {
+        const { paraBirimi, usdKarsiligi } = paraBirimiCoz(kayit.kontrol, kayit.kisi, durum.kurallar);
+        sonuc.push({
+          ...kayit,
+          yil: ay.yil,
+          ay: ay.ay,
+          donem: donemAnahtari(ay.yil, ay.ay),
+          paraBirimi,
+          usdKarsiligi: usdKarsiligi ?? (paraBirimi === "USD" ? kayit.tutar : null),
+          onayli: (kayit.tutar || 0) > 0 ? 1 : 0,
+        });
+      }
+    }
+    return sonuc;
+  }
+
+  function suzulmus({ paraDahil = true } = {}) {
+    const arama = sade(durum.arama);
+    return tumKayitlar().filter((k) => {
+      if (durum.yil !== "tumu" && String(k.yil) !== durum.yil) return false;
+      if (durum.ay !== "tumu" && k.donem !== durum.ay) return false;
+      if (durum.sadeceOdemeli && !k.onayli) return false;
+      if (paraDahil && durum.para !== "tumu" && durum.olcu === "tutar" && k.paraBirimi !== durum.para) return false;
+      if (arama) {
+        const havuz = sade([k.kisi, k.baslik, k.dergi, k.doi, k.yazarlar, k.kontrol, k.quartile].join(" "));
+        if (!havuz.includes(arama)) return false;
+      }
+      return true;
+    });
+  }
+
+  const olcuDegeri = (kayitlar) => {
+    switch (durum.olcu) {
+      case "tutar": return kayitlar.reduce((t, k) => t + (k.tutar || 0), 0);
+      case "usd": return kayitlar.reduce((t, k) => t + (k.usdKarsiligi || 0), 0);
+      case "onayli": return kayitlar.reduce((t, k) => t + k.onayli, 0);
+      default: return kayitlar.length;
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Çizim                                                               */
+  /* ------------------------------------------------------------------ */
+
+  function chipCiz(kutuId, secenekler, secili, tiklama, pasif = false) {
+    const kutu = $(kutuId);
+    kutu.textContent = "";
+    kutu.classList.toggle("pasif", pasif);
+    for (const [deger, etiket] of secenekler) {
+      const dugme = document.createElement("button");
+      dugme.type = "button";
+      dugme.textContent = etiket;
+      dugme.setAttribute("aria-pressed", String(deger === secili));
+      dugme.disabled = pasif;
+      dugme.addEventListener("click", () => tiklama(deger));
+      kutu.appendChild(dugme);
+    }
+  }
+
+  function tepeCiz() {
+    const kayitlar = suzulmus({ paraDahil: false });
+    const donemler = [...durum.aylar.values()].sort((a, b) => a.yil - b.yil || a.ay - b.ay);
+    const altBaslik = $("altBaslik");
+    if (!donemler.length) {
+      altBaslik.textContent = "Henüz ay yüklenmedi — aşağıdan ilk Excel dosyasını ekleyin.";
+    } else {
+      const ilk = donemler[0], son = donemler[donemler.length - 1];
+      altBaslik.textContent = `${donemEtiketi(ilk.yil, ilk.ay)} – ${donemEtiketi(son.yil, son.ay)}`
+        + ` · ${donemler.length} ay · ${kayitlar.length} kayıt`
+        + ` · ${new Set(kayitlar.map((k) => k.kisi)).size} kişi`
+        + (durum.demo ? " · ÖRNEK VERİ" : "");
+    }
+
+    const paraToplam = {};
+    let usdKarsiligi = 0, onayli = 0;
+    for (const kayit of kayitlar) {
+      if (kayit.tutar) paraToplam[kayit.paraBirimi] = (paraToplam[kayit.paraBirimi] || 0) + kayit.tutar;
+      usdKarsiligi += kayit.usdKarsiligi || 0;
+      onayli += kayit.onayli;
+    }
+    const kutular = [[String(onayli), "onaylı yayın", true]];
+    for (const [birim, toplam] of Object.entries(paraToplam).sort((a, b) => b[1] - a[1])) {
+      kutular.push([bicim(toplam), birim, false]);
+    }
+    kutular.push([bicim(Math.round(usdKarsiligi)), "USD karşılığı", false]);
+
+    const kap = $("kutular");
+    kap.textContent = "";
+    for (const [sayi, etiket, vurgu] of kutular) {
+      const kutu = document.createElement("div");
+      kutu.className = vurgu ? "kutu vurgu" : "kutu";
+      const b = document.createElement("b");
+      b.textContent = sayi;
+      const s = document.createElement("span");
+      s.textContent = etiket;
+      kutu.append(b, s);
+      kap.appendChild(kutu);
+    }
+  }
+
+  function filtreleriCiz() {
+    const yillar = [...new Set([...durum.aylar.values()].map((a) => a.yil))].sort();
+    chipCiz("yilGrubu", [["tumu", "Tümü"], ...yillar.map((y) => [String(y), String(y)])],
+      durum.yil, (deger) => { durum.yil = deger; durum.ay = "tumu"; ciz(); });
+    chipCiz("olcuGrubu", OLCULER, durum.olcu, (deger) => { durum.olcu = deger; ciz(); });
+    const birimler = [...new Set(tumKayitlar().map((k) => k.paraBirimi))].sort();
+    chipCiz("paraGrubu", [["tumu", "Tümü"], ...(birimler.length ? birimler : ["USD"]).map((b) => [b, b])],
+      durum.para, (deger) => { durum.para = deger; ciz(); }, durum.olcu !== "tutar");
+    chipCiz("gorunumGrubu", GORUNUMLER, durum.gorunum, (deger) => { durum.gorunum = deger; ciz(); });
+  }
+
+  function tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar = [], tiklanirSatir = false, metinSutunlari = [] }) {
+    const bas = $("tabloBasliklari"), govde = $("tabloGovdesi"), etek = $("tabloToplami");
+    bas.textContent = ""; govde.textContent = ""; etek.textContent = "";
+    const bosDurum = $("bosDurum");
+    $("tabloSarmal").hidden = !satirlar.length;
+    bosDurum.hidden = satirlar.length > 0;
+    if (!satirlar.length) {
+      bosDurum.textContent = durum.aylar.size
+        ? "Bu filtrelerle gösterilecek kayıt yok."
+        : "Panel boş. Aşağıdan bir ay dosyası yükleyin ya da örnek veriyle deneyin.";
+      durum.sonTablo = { basliklar, satirlar: [] };
+      return;
+    }
+
+    const basSatir = document.createElement("tr");
+    basliklar.forEach((baslik, i) => {
+      const hucre = document.createElement("th");
+      hucre.textContent = baslik;
+      hucre.scope = "col";
+      if (i === 0) hucre.className = "ad";
+      else if (vurguluSutunlar.includes(i)) hucre.className = "sayi yil-sutun";
+      else hucre.className = "sayi";
+      basSatir.appendChild(hucre);
+    });
+    bas.appendChild(basSatir);
+
+    for (const satir of satirlar) {
+      const tr = document.createElement("tr");
+      if (tiklanirSatir) {
+        tr.className = "tiklanir";
+        tr.tabIndex = 0;
+        const ac = () => cekmeceAc(String(satir[0]));
+        tr.addEventListener("click", ac);
+        tr.addEventListener("keydown", (olay) => { if (olay.key === "Enter") ac(); });
+      }
+      satir.forEach((deger, i) => {
+        const td = document.createElement("td");
+        if (i === 0) {
+          td.className = "ad";
+          td.textContent = deger;
+        } else if (metinSutunlari.includes(i)) {
+          td.className = "metin-hucre";
+          if (deger && deger.rozet) {
+            const span = document.createElement("span");
+            span.className = `rozet ${deger.rozet}`;
+            span.textContent = deger.metin;
+            td.appendChild(span);
+          } else {
+            td.textContent = deger ?? "";
+          }
+        } else {
+          td.className = vurguluSutunlar.includes(i) ? "sayi yil-sutun" : "sayi";
+          if (typeof deger === "number") {
+            td.textContent = bicimSifirsiz(deger);
+            if (!deger) td.classList.add("bos");
+          } else {
+            td.textContent = deger ?? "";
+          }
+        }
+        tr.appendChild(td);
+      });
+      govde.appendChild(tr);
+    }
+
+    if (toplam) {
+      const tr = document.createElement("tr");
+      toplam.forEach((deger, i) => {
+        const td = document.createElement("td");
+        td.className = i === 0 ? "ad" : "sayi";
+        td.textContent = i === 0 ? deger : (typeof deger === "number" ? bicimSifirsiz(deger) : (deger ?? ""));
+        tr.appendChild(td);
+      });
+      etek.appendChild(tr);
+    }
+    durum.sonTablo = { basliklar, satirlar: toplam ? [...satirlar, toplam] : satirlar };
+  }
+
+  function pivotCiz(alan) {
+    const kayitlar = suzulmus();
+    const donemler = [...new Set(kayitlar.map((k) => k.donem))].sort();
+    const yillar = [...new Set(donemler.map((d) => d.slice(0, 4)))].sort();
+    const gruplar = new Map();
+    for (const kayit of kayitlar) {
+      const anahtar = (alan === "kisi" ? kayit.kisi : kayit.quartile) || "(boş)";
+      if (!gruplar.has(anahtar)) gruplar.set(anahtar, []);
+      gruplar.get(anahtar).push(kayit);
+    }
+    const basliklar = ["Kişi", ...donemler.map((d) => donemEtiketi(Number(d.slice(0, 4)), Number(d.slice(5)))),
+      ...yillar, "Toplam"];
+    if (alan !== "kisi") basliklar[0] = "Quartile";
+    const vurgulu = donemler.map((_, i) => 1 + donemler.length + i).slice(0, yillar.length)
+      .concat([basliklar.length - 1]);
+
+    const satirlar = [...gruplar.entries()].map(([ad, grup]) => {
+      const aylik = donemler.map((d) => olcuDegeri(grup.filter((k) => k.donem === d)));
+      const yillik = yillar.map((y) => olcuDegeri(grup.filter((k) => String(k.yil) === y)));
+      return [ad, ...aylik, ...yillik, olcuDegeri(grup)];
+    }).sort((a, b) => b[b.length - 1] - a[a.length - 1]);
+
+    const toplam = ["Toplam", ...donemler.map((d) => olcuDegeri(kayitlar.filter((k) => k.donem === d))),
+      ...yillar.map((y) => olcuDegeri(kayitlar.filter((k) => String(k.yil) === y))),
+      olcuDegeri(kayitlar)];
+
+    tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar: vurgulu, tiklanirSatir: alan === "kisi" });
+  }
+
+  function kisiOzetiCiz() {
+    const kayitlar = suzulmus({ paraDahil: false });
+    const birimler = [...new Set(kayitlar.filter((k) => k.tutar).map((k) => k.paraBirimi))].sort();
+    const gruplar = new Map();
+    for (const kayit of kayitlar) {
+      if (!gruplar.has(kayit.kisi)) gruplar.set(kayit.kisi, []);
+      gruplar.get(kayit.kisi).push(kayit);
+    }
+    const basliklar = ["Kişi", "Kayıt", "Ödemeli", ...birimler, "USD karşılığı"];
+    const satirlar = [...gruplar.entries()].map(([ad, grup]) => [
+      ad, grup.length, grup.reduce((t, k) => t + k.onayli, 0),
+      ...birimler.map((b) => grup.filter((k) => k.paraBirimi === b).reduce((t, k) => t + (k.tutar || 0), 0)),
+      Math.round(grup.reduce((t, k) => t + (k.usdKarsiligi || 0), 0)),
+    ]).sort((a, b) => b[b.length - 1] - a[a.length - 1]);
+    const toplam = ["Toplam", kayitlar.length, kayitlar.reduce((t, k) => t + k.onayli, 0),
+      ...birimler.map((b) => kayitlar.filter((k) => k.paraBirimi === b).reduce((t, k) => t + (k.tutar || 0), 0)),
+      Math.round(kayitlar.reduce((t, k) => t + (k.usdKarsiligi || 0), 0))];
+    tabloYaz({ basliklar, satirlar, toplam, tiklanirSatir: true });
+  }
+
+  function kirilimCiz(alan) {
+    const kayitlar = suzulmus();
+    const gruplar = new Map();
+    for (const kayit of kayitlar) {
+      const anahtar = alan === "dergi"
+        ? (kayit.dergi || "(boş)")
+        : (kayit.tutar ? bicim(kayit.tutar) : "ödemesiz");
+      if (!gruplar.has(anahtar)) gruplar.set(anahtar, []);
+      gruplar.get(anahtar).push(kayit);
+    }
+    const basliklar = [alan === "dergi" ? "Dergi" : "Ödeme tutarı", "Kayıt", "Ödemeli", "Kişi",
+      "Toplam", "USD karşılığı"];
+    const satirlar = [...gruplar.entries()].map(([ad, grup]) => [
+      ad, grup.length, grup.reduce((t, k) => t + k.onayli, 0),
+      new Set(grup.map((k) => k.kisi)).size,
+      grup.reduce((t, k) => t + (k.tutar || 0), 0),
+      Math.round(grup.reduce((t, k) => t + (k.usdKarsiligi || 0), 0)),
+    ]).sort((a, b) => b[4] - a[4] || b[1] - a[1]);
+    tabloYaz({ basliklar, satirlar });
+  }
+
+  function kayitlariCiz() {
+    const kayitlar = suzulmus().sort((a, b) => b.donem.localeCompare(a.donem)
+      || a.kisi.localeCompare(b.kisi, "tr") || Number(a.sira) - Number(b.sira));
+    const basliklar = ["Kişi", "Dönem", "Makale", "Dergi", "Q", "Yayın tarihi", "Kontrol notu",
+      "Tutar", "Birim", "USD karşılığı"];
+    const satirlar = kayitlar.map((k) => [
+      k.kisi, donemEtiketi(k.yil, k.ay), k.baslik, k.dergi, k.quartile, k.tarih,
+      k.kontrol ? { metin: k.kontrol, rozet: k.tutar ? "" : "bekleyen" }
+        : (k.tutar ? "" : { metin: "ödeme yok", rozet: "bekleyen" }),
+      k.tutar ?? "", k.paraBirimi, k.usdKarsiligi ?? "",
+    ]);
+    tabloYaz({ basliklar, satirlar, metinSutunlari: [1, 2, 3, 4, 5, 6, 8] });
+  }
+
+  const GORUNUM_NOTLARI = {
+    kisi: "Kişiye tıklayınca yıllık dökümü ve para birimi kuralı açılır.",
+    ozet: "Para birimi sütunları ayrı ayrı toplanır; USD karşılığı hepsini tek ölçüde toplar.",
+    quartile: "Q1/Q2/Q3 kırılımı — hangi kalitede kaç yayın ödenmiş.",
+    dergi: "Dergi bazında yayın ve ödeme dağılımı.",
+    dagilim: "Standart tutarlara göre dağılım (500 / 450 / 400 …) ve ödemesiz kayıtlar.",
+    kayitlar: "Ham satırlar. Ödemesi olmayan kayıtlar işaretlidir.",
+  };
+
+  function ciz() {
+    filtreleriCiz();
+    tepeCiz();
+    aylariCiz();
+    $("gorunumNotu").textContent = GORUNUM_NOTLARI[durum.gorunum] || "";
+    if (durum.gorunum === "kisi") pivotCiz("kisi");
+    else if (durum.gorunum === "quartile") pivotCiz("quartile");
+    else if (durum.gorunum === "ozet") kisiOzetiCiz();
+    else if (durum.gorunum === "dergi") kirilimCiz("dergi");
+    else if (durum.gorunum === "dagilim") kirilimCiz("dagilim");
+    else kayitlariCiz();
+  }
+
+  function aylariCiz() {
+    const kap = $("aylarListesi");
+    kap.textContent = "";
+    const aylar = [...durum.aylar.values()].sort((a, b) => b.yil - a.yil || b.ay - a.ay);
+    if (!aylar.length) {
+      const bos = document.createElement("span");
+      bos.className = "kucuk-not";
+      bos.textContent = "Henüz ay yok.";
+      kap.appendChild(bos);
+      const dene = document.createElement("button");
+      dene.className = "dugme";
+      dene.textContent = "Örnek veriyle dene";
+      dene.addEventListener("click", ornekYukle);
+      kap.appendChild(dene);
+      return;
+    }
+    for (const ay of aylar) {
+      const anahtar = donemAnahtari(ay.yil, ay.ay);
+      const etiket = document.createElement("span");
+      etiket.className = "ay-etiket";
+      const sec = document.createElement("button");
+      sec.type = "button";
+      sec.style.color = durum.ay === anahtar ? "var(--accent)" : "";
+      sec.style.fontWeight = durum.ay === anahtar ? "600" : "";
+      sec.textContent = `${donemEtiketi(ay.yil, ay.ay)} · ${ay.kayitlar.length}`;
+      sec.addEventListener("click", () => {
+        durum.ay = durum.ay === anahtar ? "tumu" : anahtar;
+        if (durum.ay !== "tumu") durum.yil = "tumu";
+        ciz();
+      });
+      const sil = document.createElement("button");
+      sil.type = "button";
+      sil.textContent = "×";
+      sil.title = `${donemEtiketi(ay.yil, ay.ay)} verisini sil`;
+      sil.setAttribute("aria-label", `${donemEtiketi(ay.yil, ay.ay)} verisini sil`);
+      sil.addEventListener("click", () => aySil(anahtar));
+      etiket.append(sec, sil);
+      kap.appendChild(etiket);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Kişi çekmecesi                                                      */
+  /* ------------------------------------------------------------------ */
+
+  function cekmeceAc(kisi) {
+    if (kisi === "Toplam") return;
+    const kayitlar = tumKayitlar().filter((k) => k.kisi === kisi);
+    if (!kayitlar.length) return;
+    $("cekmeceBaslik").textContent = kisi;
+    const paralar = {};
+    for (const kayit of kayitlar) if (kayit.tutar) paralar[kayit.paraBirimi] = (paralar[kayit.paraBirimi] || 0) + kayit.tutar;
+    $("cekmeceOzet").textContent = `${kayitlar.length} kayıt · `
+      + `${kayitlar.reduce((t, k) => t + k.onayli, 0)} ödemeli · `
+      + Object.entries(paralar).map(([b, v]) => `${bicim(v)} ${b}`).join("  ");
+
+    const secim = $("kuralSecimi");
+    secim.textContent = "";
+    for (const [deger, etiket] of [["", "kural yok"], ...PARA_BIRIMLERI.map((b) => [b, b])]) {
+      const secenek = document.createElement("option");
+      secenek.value = deger;
+      secenek.textContent = etiket;
+      secim.appendChild(secenek);
+    }
+    secim.value = durum.kurallar[temizAd(kisi)] || "";
+    secim.onchange = () => kuralKaydet(kisi, secim.value);
+
+    const icerik = $("cekmeceIcerik");
+    icerik.textContent = "";
+    const donemler = [...new Set(kayitlar.map((k) => k.donem))].sort().reverse();
+    const tablo = document.createElement("table");
+    const bas = document.createElement("thead");
+    bas.innerHTML = "<tr><th class=\"ad\" scope=\"col\">Dönem</th><th class=\"sayi\" scope=\"col\">Kayıt</th>"
+      + "<th class=\"sayi\" scope=\"col\">Ödemeli</th><th class=\"sayi\" scope=\"col\">Tutar</th>"
+      + "<th class=\"sayi\" scope=\"col\">Birim</th></tr>";
+    const govde = document.createElement("tbody");
+    for (const donem of donemler) {
+      const grup = kayitlar.filter((k) => k.donem === donem);
+      const birimler = [...new Set(grup.filter((k) => k.tutar).map((k) => k.paraBirimi))];
+      const satir = document.createElement("tr");
+      satir.innerHTML = `<td class="ad">${donemEtiketi(Number(donem.slice(0, 4)), Number(donem.slice(5)))}</td>`
+        + `<td class="sayi">${grup.length}</td>`
+        + `<td class="sayi">${grup.reduce((t, k) => t + k.onayli, 0)}</td>`
+        + `<td class="sayi">${bicimSifirsiz(grup.reduce((t, k) => t + (k.tutar || 0), 0))}</td>`
+        + `<td class="sayi">${birimler.join(", ") || "·"}</td>`;
+      govde.appendChild(satir);
+    }
+    tablo.append(bas, govde);
+    const sarmal = document.createElement("div");
+    sarmal.className = "tablo-sarmal";
+    sarmal.appendChild(tablo);
+    icerik.appendChild(sarmal);
+
+    const liste = document.createElement("div");
+    liste.style.marginTop = "16px";
+    for (const kayit of kayitlar.slice().sort((a, b) => b.donem.localeCompare(a.donem))) {
+      const satir = document.createElement("p");
+      satir.className = "kucuk-not";
+      satir.style.borderTop = "1px solid var(--line)";
+      satir.style.paddingTop = "8px";
+      satir.textContent = `${donemEtiketi(kayit.yil, kayit.ay)} · ${kayit.quartile || "—"} · `
+        + `${kayit.baslik} — ${kayit.dergi}`
+        + (kayit.tutar ? ` · ${bicim(kayit.tutar)} ${kayit.paraBirimi}` : " · ödeme yok");
+      liste.appendChild(satir);
+    }
+    icerik.appendChild(liste);
+
+    $("cekmece").dataset.acik = "1";
+    $("perde").dataset.acik = "1";
+  }
+
+  function cekmeceKapat() {
+    $("cekmece").dataset.acik = "0";
+    $("perde").dataset.acik = "0";
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Kalıcı depo (db capability, yoksa tarayıcı deposu)                   */
+  /* ------------------------------------------------------------------ */
+
+  const YEREL_AY = "yayin-paneli-aylar";
+  const YEREL_KURAL = "yayin-paneli-kurallar";
+
+  function yereldenOku() {
+    try {
+      const ham = JSON.parse(localStorage.getItem(YEREL_AY) || "[]");
+      durum.aylar = new Map(ham.map((ay) => [donemAnahtari(ay.yil, ay.ay), ay]));
+      durum.kurallar = JSON.parse(localStorage.getItem(YEREL_KURAL) || "{}");
+    } catch (hata) {
+      durum.aylar = new Map();
+      durum.kurallar = {};
+    }
+  }
+
+  function yereleYaz() {
+    try {
+      localStorage.setItem(YEREL_AY, JSON.stringify([...durum.aylar.values()]));
+      localStorage.setItem(YEREL_KURAL, JSON.stringify(durum.kurallar));
+    } catch (hata) { /* depo dolu ya da kapalı: panel yine de çalışır */ }
+  }
+
+  async function depoyaBaglan() {
+    let db = null;
+    try {
+      db = window.claude && window.claude.use ? await window.claude.use("db") : null;
+    } catch (hata) { db = null; }
+    durum.db = db;
+    if (!db) {
+      yereldenOku();
+      $("depoNotu").textContent = "Veriler bu tarayıcıda saklanıyor (sunucu deposu bu görünümde açılamadı).";
+      ciz();
+      return;
+    }
+    $("depoNotu").textContent = "Veriler panele kayıtlı; her cihazdan aynı sonuçları görürsün.";
+    db.collection("aylar").onSnapshot((anlik) => {
+      durum.aylar = new Map();
+      for (const belge of anlik.docs) {
+        const veri = belge.data();
+        if (veri && Array.isArray(veri.kayitlar)) durum.aylar.set(belge.id, veri);
+      }
+      durum.demo = false;
+      ciz();
+    }, () => { $("depoNotu").textContent = "Sunucu deposuna ulaşılamadı; sayfayı yenileyin."; });
+    db.doc("ayarlar/kurallar").onSnapshot((anlik) => {
+      durum.kurallar = (anlik.exists && anlik.data()) || {};
+      ciz();
+    }, () => {});
+  }
+
+  async function ayKaydet(yil, ay, kayitlar, dosyaAdi) {
+    const anahtar = donemAnahtari(yil, ay);
+    const belge = { yil, ay, dosya: dosyaAdi, yuklenme: new Date().toISOString(), kayitlar };
+    if (durum.db) {
+      await durum.db.doc(`aylar/${anahtar}`).set(belge);
+    } else {
+      durum.aylar.set(anahtar, belge);
+      yereleYaz();
+      ciz();
+    }
+    durum.demo = false;
+  }
+
+  async function aySil(anahtar) {
+    const ay = durum.aylar.get(anahtar);
+    if (!ay) return;
+    if (!confirm(`${donemEtiketi(ay.yil, ay.ay)} verisi silinsin mi?`)) return;
+    if (durum.db) {
+      await durum.db.doc(`aylar/${anahtar}`).delete();
+    } else {
+      durum.aylar.delete(anahtar);
+      yereleYaz();
+      ciz();
+    }
+    if (durum.ay === anahtar) durum.ay = "tumu";
+    bilgiVer(`${donemEtiketi(ay.yil, ay.ay)} silindi.`);
+  }
+
+  async function kuralKaydet(kisi, birim) {
+    const kurallar = { ...durum.kurallar };
+    if (birim) kurallar[temizAd(kisi)] = birim; else delete kurallar[temizAd(kisi)];
+    durum.kurallar = kurallar;
+    if (durum.db) {
+      await durum.db.doc("ayarlar/kurallar").set(kurallar);
+    } else {
+      yereleYaz();
+    }
+    ciz();
+    cekmeceAc(kisi);
+    bilgiVer(birim ? `${kisi} → ${birim}` : `${kisi} için kural kaldırıldı.`);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Dosya yükleme                                                       */
+  /* ------------------------------------------------------------------ */
+
+  function donemSecicileriDoldur(donem) {
+    const aySecimi = $("aySecimi"), yilSecimi = $("yilSecimi");
+    if (!aySecimi.options.length) {
+      AY_ADLARI.forEach((ad, i) => {
+        const secenek = document.createElement("option");
+        secenek.value = String(i + 1);
+        secenek.textContent = ad;
+        aySecimi.appendChild(secenek);
+      });
+      const buYil = new Date().getFullYear();
+      for (let yil = buYil - 6; yil <= buYil + 2; yil += 1) {
+        const secenek = document.createElement("option");
+        secenek.value = String(yil);
+        secenek.textContent = String(yil);
+        yilSecimi.appendChild(secenek);
+      }
+    }
+    aySecimi.value = String(donem.ay);
+    yilSecimi.value = String(donem.yil);
+  }
+
+  async function dosyayiIsle(dosya) {
+    if (!dosya) return;
+    $("dosyaDurumu").textContent = `${dosya.name} okunuyor…`;
+    try {
+      const tampon = await dosya.arrayBuffer();
+      const kitap = XLSX.read(tampon, { type: "array", cellDates: true });
+      const sayfa = kitap.Sheets[kitap.SheetNames[0]];
+      const satirlar = XLSX.utils.sheet_to_json(sayfa, { header: 1, raw: true, defval: null });
+      const sonuc = dosyayiAyristir(satirlar, dosya.name, null);
+      durum.bekleyen = { ...sonuc, dosyaAdi: dosya.name };
+      donemSecicileriDoldur(sonuc.donem);
+      $("donemSatiri").hidden = false;
+      const paralar = {};
+      for (const kayit of sonuc.kayitlar) {
+        if (!kayit.tutar) continue;
+        const { paraBirimi } = paraBirimiCoz(kayit.kontrol, kayit.kisi, durum.kurallar);
+        paralar[paraBirimi] = (paralar[paraBirimi] || 0) + kayit.tutar;
+      }
+      const odemeli = sonuc.kayitlar.filter((k) => (k.tutar || 0) > 0).length;
+      $("dosyaDurumu").textContent = `${dosya.name} · ${donemEtiketi(sonuc.donem.yil, sonuc.donem.ay)}`
+        + ` · ${sonuc.kayitlar.length} kayıt · ${odemeli} ödemeli`;
+      gunlugeYaz(`${dosya.name} okundu: ${donemEtiketi(sonuc.donem.yil, sonuc.donem.ay)}, `
+        + `${sonuc.kayitlar.length} kayıt, ${odemeli} ödemeli, `
+        + Object.entries(paralar).map(([b, v]) => `${bicim(v)} ${b}`).join("  "));
+      for (const uyari of sonuc.uyarilar) gunlugeYaz(`  ! ${uyari}`);
+      gunlugeYaz("  → Dönemi kontrol edip \"Bu ayı kaydet\" düğmesine bas.");
+    } catch (hata) {
+      durum.bekleyen = null;
+      $("donemSatiri").hidden = true;
+      $("dosyaDurumu").textContent = "Dosya okunamadı.";
+      gunlugeYaz(`HATA: ${hata.message || hata}`);
+    }
+  }
+
+  async function bekleyeniKaydet() {
+    if (!durum.bekleyen) return;
+    const yil = Number($("yilSecimi").value);
+    const ay = Number($("aySecimi").value);
+    const anahtar = donemAnahtari(yil, ay);
+    const vardi = durum.aylar.has(anahtar);
+    try {
+      await ayKaydet(yil, ay, durum.bekleyen.kayitlar, durum.bekleyen.dosyaAdi);
+      gunlugeYaz(`${donemEtiketi(yil, ay)} kaydedildi (${durum.bekleyen.kayitlar.length} kayıt`
+        + `${vardi ? ", önceki veri değiştirildi" : ""}).`);
+      bilgiVer(`${donemEtiketi(yil, ay)} kaydedildi.`);
+      durum.bekleyen = null;
+      $("donemSatiri").hidden = true;
+      $("dosyaDurumu").textContent = "Kaydedildi. Yeni bir dosya seçebilirsin.";
+      $("dosyaGirisi").value = "";
+    } catch (hata) {
+      gunlugeYaz(`HATA: kaydedilemedi — ${hata.message || hata}`);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* CSV                                                                 */
+  /* ------------------------------------------------------------------ */
+
+  async function csvIndir() {
+    if (!durum.sonTablo || !durum.sonTablo.satirlar.length) {
+      bilgiVer("İndirilecek satır yok.");
+      return;
+    }
+    const kacir = (hucre) => {
+      const metin = hucre && typeof hucre === "object" ? hucre.metin : hucre;
+      const yazi = metin === null || metin === undefined ? "" : String(metin);
+      return /[";\n]/.test(yazi) ? `"${yazi.replace(/"/g, "\"\"")}"` : yazi;
+    };
+    const satirlar = [durum.sonTablo.basliklar, ...durum.sonTablo.satirlar]
+      .map((satir) => satir.map(kacir).join(";")).join("\r\n");
+    const dosyaAdi = `yayin-paneli-${durum.gorunum}-${new Date().toISOString().slice(0, 10)}.csv`;
+    let indir = null;
+    try {
+      indir = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+    } catch (hata) { indir = null; }
+    if (indir) {
+      try {
+        await indir.save({ filename: dosyaAdi, data: `﻿${satirlar}` });
+        bilgiVer("CSV kaydedildi.");
+      } catch (hata) {
+        if (hata && hata.code !== "cancelled") bilgiVer("İndirme tamamlanamadı.");
+      }
+      return;
+    }
+    const bag = document.createElement("a");
+    bag.href = URL.createObjectURL(new Blob([`﻿${satirlar}`], { type: "text/csv;charset=utf-8" }));
+    bag.download = dosyaAdi;
+    bag.click();
+    URL.revokeObjectURL(bag.href);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Örnek veri (yalnızca ekranda, kaydedilmez)                          */
+  /* ------------------------------------------------------------------ */
+
+  function ornekYukle() {
+    const dergiler = ["Ceramics International", "Applied Physics A", "Results in Optics",
+      "Materials Today Communications", "Scientific Reports"];
+    const kisiler = ["Ada Yılmaz (örnek)", "Bora Demir (örnek)", "Cem Arslan (örnek)"];
+    const tutarlar = { Q1: 500, Q2: 450, Q3: 400 };
+    let tohum = 7;
+    const rastgele = () => (tohum = (tohum * 9301 + 49297) % 233280) / 233280;
+    for (const [yil, ay] of [[2026, 7], [2026, 8]]) {
+      const kayitlar = [];
+      kisiler.forEach((kisi, k) => {
+        const adet = 2 + Math.floor(rastgele() * 4);
+        for (let sira = 1; sira <= adet; sira += 1) {
+          const quartile = ["Q1", "Q2", "Q3"][Math.floor(rastgele() * 3)];
+          const standart = tutarlar[quartile];
+          const odendi = rastgele() > 0.2;
+          const euro = k === 1;
+          kayitlar.push({
+            kisi, sira: String(sira),
+            baslik: `Örnek makale ${ay}.${k + 1}.${sira}`,
+            dergi: dergiler[Math.floor(rastgele() * dergiler.length)],
+            yazarlar: "A. Yazar, B. Yazar",
+            doi: `10.1000/ornek.${yil}${ay}${k}${sira}`,
+            quartile,
+            tarih: `${yil}-${String(ay).padStart(2, "0")}-01`,
+            indexLink: "",
+            kontrol: euro ? `${standart}/1.1595 (EUR/USD Paritesi 1.1595)` : (odendi ? "" : "ESCI"),
+            tutar: odendi ? (euro ? Math.round(standart / 1.1595) : standart) : null,
+          });
+        }
+      });
+      durum.aylar.set(donemAnahtari(yil, ay),
+        { yil, ay, dosya: "örnek.xlsx", yuklenme: new Date().toISOString(), kayitlar });
+    }
+    durum.demo = true;
+    gunlugeYaz("Örnek veri yüklendi (kaydedilmedi). Gerçek dosyanı yükleyince yerini alır.");
+    ciz();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Bağlantılar                                                         */
+  /* ------------------------------------------------------------------ */
+
+  $("dosyaDugmesi").addEventListener("click", () => $("dosyaGirisi").click());
+  $("dosyaGirisi").addEventListener("change", (olay) => dosyayiIsle(olay.target.files[0]));
+  $("kaydetDugmesi").addEventListener("click", bekleyeniKaydet);
+  $("disaAktarDugmesi").addEventListener("click", csvIndir);
+  $("odemeliKutu").addEventListener("change", (olay) => { durum.sadeceOdemeli = olay.target.checked; ciz(); });
+  $("aramaKutusu").addEventListener("input", (olay) => { durum.arama = olay.target.value; ciz(); });
+  $("cekmeceKapat").addEventListener("click", cekmeceKapat);
+  $("perde").addEventListener("click", cekmeceKapat);
+  document.addEventListener("keydown", (olay) => { if (olay.key === "Escape") cekmeceKapat(); });
+
+  const birak = $("birakAlani");
+  birak.addEventListener("dragover", (olay) => { olay.preventDefault(); birak.classList.add("uzerinde"); });
+  birak.addEventListener("dragleave", () => birak.classList.remove("uzerinde"));
+  birak.addEventListener("drop", (olay) => {
+    olay.preventDefault();
+    birak.classList.remove("uzerinde");
+    dosyayiIsle(olay.dataTransfer.files[0]);
+  });
+
+  ciz();
+  depoyaBaglan();
+})();
+</script>
