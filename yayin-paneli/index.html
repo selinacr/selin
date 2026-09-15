@@ -175,6 +175,11 @@
 </style>
 
 <div class="sayfa">
+  <div class="araclar" style="margin-bottom: 2px;">
+    <div class="grup" id="modGrubu" role="group" aria-label="Panel"></div>
+  </div>
+
+  <div id="adjunctBolum" style="display: flex; flex-direction: column; gap: 16px;">
   <header class="tepe">
     <div>
       <h1>Adjunct Yayın Paneli</h1>
@@ -240,6 +245,79 @@
       <p class="kucuk-not" id="depoNotu"></p>
     </div>
   </section>
+  </div>
+
+  <div id="kurumBolum" hidden style="display: flex; flex-direction: column; gap: 16px;">
+    <header class="tepe">
+      <div>
+        <h1>Kurum Yayın Analizi</h1>
+        <p class="alt-baslik" id="kAltBaslik">WoS/Scopus dışa aktarımını ve personel listesini yükle.</p>
+      </div>
+      <div class="kutular" id="kKutular"></div>
+    </header>
+
+    <section class="araclar" aria-label="Kurum filtreleri">
+      <div class="grup" id="kSenaryoGrubu" role="group" aria-label="Senaryo"></div>
+      <div class="grup" id="kYilGrubu" role="group" aria-label="Yıl"></div>
+      <div class="ara">
+        <input type="search" id="kArama" placeholder="Kişi, makale, dergi…" aria-label="Ara">
+        <button class="dugme" id="kCsvDugmesi">CSV indir</button>
+      </div>
+    </section>
+
+    <section class="araclar" aria-label="Kurum görünümü">
+      <div class="grup" id="kGorunumGrubu" role="group" aria-label="Görünüm"></div>
+      <span class="kucuk-not" id="kGorunumNotu"></span>
+    </section>
+
+    <section class="kart">
+      <div class="tablo-sarmal" id="kTabloSarmal">
+        <table id="kTablo">
+          <thead id="kBasliklar"></thead>
+          <tbody id="kGovde"></tbody>
+          <tfoot id="kToplam"></tfoot>
+        </table>
+      </div>
+      <div class="bos-durum" id="kBosDurum" hidden></div>
+    </section>
+
+    <section class="kart yukle">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <h3>Veri yükle</h3>
+        <p class="kucuk-not">WoS "Full Record" dışa aktarımı (.xls/.xlsx), kurum personel listesi ve
+          istersen SCImago SJR dosyası (ISSN → çeyreklik). Aynı yıl yeniden yüklenirse o yıl tazelenir.</p>
+        <div class="birak" id="kBirak">
+          <div class="satir">
+            <button class="dugme ana" id="kWosDugmesi">WoS dosyası</button>
+            <button class="dugme" id="kPersonelDugmesi">Personel listesi</button>
+            <button class="dugme" id="kSjrDugmesi">SJR / çeyreklik</button>
+          </div>
+          <input type="file" id="kWosGirisi" accept=".xls,.xlsx,.xlsm" hidden>
+          <input type="file" id="kPersonelGirisi" accept=".xls,.xlsx,.xlsm" hidden>
+          <input type="file" id="kSjrGirisi" accept=".csv,.xls,.xlsx" hidden>
+          <span class="kucuk-not" id="kDosyaDurumu">Henüz dosya seçilmedi.</span>
+          <div class="satir" id="kOnaySatiri" hidden>
+            <label class="kucuk-not" for="kYilSecimi">Yıl</label>
+            <select id="kYilSecimi"></select>
+            <button class="dugme ana" id="kKaydetDugmesi">Kaydet</button>
+          </div>
+        </div>
+        <pre class="gunluk" id="kGunluk" aria-live="polite"></pre>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <h3>Yüklü veriler</h3>
+        <div class="aylar" id="kYillarListesi"></div>
+        <p class="kucuk-not" id="kPersonelNotu"></p>
+        <div class="alan">
+          <span>Adjunct / dış bağlantılı isimler (senaryo B'de çıkarılır) — her satıra bir ad</span>
+          <textarea id="kAdjunctListesi" style="min-height: 96px;"></textarea>
+        </div>
+        <div class="satir">
+          <button class="dugme" id="kAdjunctKaydet">Adjunct listesini kaydet</button>
+        </div>
+      </div>
+    </section>
+  </div>
 </div>
 
 <div class="perde" id="perde"></div>
@@ -1830,7 +1908,11 @@
   });
 
   // Ayrıştırıcı dışarıdan da çağrılabilsin (veri aktarımı ve testler için)
-  window.YayinPaneli = { dosyayiAyristir, kimlikUret, quartileCoz, durum };
+  window.YayinPaneli = {
+    dosyayiAyristir, kimlikUret, quartileCoz, durum,
+    yardimcilar: { sade, temizAd, sayiyaCevir, bicim, bicimSifirsiz, secenekDoldur, bilgiVer,
+      chipCiz, yazmaHatasi, $ },
+  };
 
   let sonGenislik = window.innerWidth;
   window.addEventListener("resize", () => {
@@ -1841,5 +1923,1063 @@
 
   ciz();
   depoyaBaglan();
+})();
+</script>
+
+<script>
+/* ==================================================================== */
+/* Kurum Yayın Analizi — WoS/Scopus dışa aktarımı + personel listesi     */
+/* ==================================================================== */
+(() => {
+  "use strict";
+
+  const bekle = (islev) => (window.YayinPaneli ? islev() : setTimeout(() => bekle(islev), 50));
+
+  bekle(() => {
+  const { sade, temizAd, sayiyaCevir, bicim, bicimSifirsiz, secenekDoldur, bilgiVer, chipCiz,
+    yazmaHatasi, $ } = window.YayinPaneli.yardimcilar;
+
+  const KURUM_GORUNUMLERI = [
+    ["ozet", "Özet göstergeler"],
+    ["fakulte", "Fakülte"],
+    ["indeks", "İndeks"],
+    ["quartile", "Çeyreklik"],
+    ["capraz", "İndeks × Q"],
+    ["oa", "Açık erişim"],
+    ["unvan", "Unvan"],
+    ["kisi", "Kişi bazlı"],
+    ["yil", "Yıl bazlı"],
+    ["dergi", "Dergi"],
+    ["alan", "Araştırma alanı"],
+  ];
+  const INDEKS_ADLARI = [
+    ["SCI-EXPANDED", /science citation index expanded|sci-expanded/i],
+    ["SSCI", /social scien\w* citation index|ssci/i],
+    ["A&HCI", /arts\s*&?\s*humanities|a&hci/i],
+    ["ESCI", /emerging sources|esci/i],
+    ["CPCI-S", /conference proceedings citation index\s*-?\s*scien|cpci-s/i],
+    ["CPCI-SSH", /conference proceedings citation index\s*-?\s*social|cpci-ssh/i],
+    ["BKCI", /book citation index|bkci/i],
+  ];
+
+  const durum = {
+    yillar: new Map(),          // "2026" -> {yil, dosya, yuklenme, kayitlar[]}
+    personel: [],               // {ad, soyad, unvan, fakulte, birim, aktif}
+    adjunct: [],                // adjunct/dış bağlantılı isimler
+    quartiller: new Map(),      // ISSN -> "Q1".."Q4"
+    db: null,
+    senaryo: "A",
+    yil: "tumu",
+    gorunum: "ozet",
+    arama: "",
+    bekleyen: null,
+    sonTablo: null,
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Ad normalleştirme ve eşleştirme                                    */
+  /* ---------------------------------------------------------------- */
+
+  const harfSade = (metin) => sade(metin).replace(/\s+/g, " ").trim();
+
+  /** "Soyad, Ad İkinci" → {soyad, adlar[]}; "Ad Soyad" biçimini de kabul eder. */
+  function yazarAdiCoz(ham) {
+    const metin = temizAd(ham);
+    if (!metin) return null;
+    if (metin.includes(",")) {
+      const [soyad, adKismi = ""] = metin.split(",");
+      return { soyad: harfSade(soyad), adlar: harfSade(adKismi).split(" ").filter(Boolean), ham: metin };
+    }
+    const parcalar = harfSade(metin).split(" ").filter(Boolean);
+    if (parcalar.length < 2) return { soyad: parcalar[0] || "", adlar: [], ham: metin };
+    return { soyad: parcalar[parcalar.length - 1], adlar: parcalar.slice(0, -1), ham: metin };
+  }
+
+  /** Soyad + ad/baş harf ölçütüyle iki adın aynı kişi olup olmadığına bakar. */
+  function adEslesiyorMu(yazar, kisi) {
+    if (!yazar || !kisi) return false;
+    if (yazar.soyad !== kisi.soyad) return false;
+    if (!yazar.adlar.length || !kisi.adlar.length) return true;
+    for (const a of yazar.adlar) {
+      for (const b of kisi.adlar) {
+        if (a === b) return true;
+        if (a.length === 1 && b.startsWith(a)) return true;
+        if (b.length === 1 && a.startsWith(b)) return true;
+        // "AA" gibi birleşik baş harfler
+        if (a.length <= 3 && b.length > 1 && a.split("").every((h, i) => (kisi.adlar[i] || "").startsWith(h))) return true;
+      }
+    }
+    return false;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* WoS dışa aktarımını ayrıştırma                                     */
+  /* ---------------------------------------------------------------- */
+
+  const SUTUNLAR = {
+    yazarlar: ["authors", "yazarlar"],
+    yazarTam: ["author full names", "author full name"],
+    baslik: ["article title", "title", "makale adi"],
+    dergi: ["source title", "journal", "dergi"],
+    belgeTuru: ["document type", "belge turu"],
+    dil: ["language"],
+    adresler: ["addresses", "adresler"],
+    kurumlar: ["affiliations"],
+    issn: ["issn"],
+    eissn: ["eissn"],
+    doi: ["doi"],
+    yil: ["publication year", "yayin yili"],
+    erkenTarih: ["early access date"],
+    yayinTarihi: ["publication date"],
+    indeks: ["web of science index", "source database", "indeks"],
+    kategori: ["wos categories", "web of science categories"],
+    alan: ["research areas", "subject area"],
+    oa: ["open access designations", "open access", "access type"],
+    atif: ["times cited, all databases", "times cited, wos core", "cited by", "atif"],
+    quartile: ["jif quartile", "quartile", "jci quartile", "best quartile"],
+    ut: ["ut (unique wos id)", "ut", "eid", "accession number"],
+  };
+
+  function sutunHaritasi(basliklar) {
+    const harita = {};
+    basliklar.forEach((ham, i) => {
+      const duz = harfSade(ham);
+      if (!duz) return;
+      for (const [alan, adaylar] of Object.entries(SUTUNLAR)) {
+        if (alan in harita) continue;
+        if (adaylar.some((a) => duz === harfSade(a))) { harita[alan] = i; return; }
+      }
+    });
+    // Tam eşleşme bulunamayan alanlar için gevşek eşleşme
+    basliklar.forEach((ham, i) => {
+      const duz = harfSade(ham);
+      if (!duz) return;
+      for (const [alan, adaylar] of Object.entries(SUTUNLAR)) {
+        if (alan in harita) continue;
+        if (adaylar.some((a) => duz.includes(harfSade(a)))) { harita[alan] = i; return; }
+      }
+    });
+    return harita;
+  }
+
+  /** Addresses alanından kurum adresine bağlı yazarları çıkarır. */
+  function kurumYazarlari(adresMetni, kurumKalibi) {
+    const metin = String(adresMetni || "");
+    if (!metin.trim()) return { yazarlar: [], kurumVar: false };
+    const yazarlar = [];
+    let kurumVar = false;
+    const parcalar = metin.split(/;\s*(?=\[)/);
+    if (!metin.includes("[")) {
+      // Tek adres, yazar listesi yok
+      return { yazarlar: [], kurumVar: kurumKalibi.test(metin) };
+    }
+    for (const parca of parcalar) {
+      const eslesme = parca.match(/^\s*\[([^\]]*)\]\s*(.*)$/s);
+      if (!eslesme) continue;
+      const adres = eslesme[2] || "";
+      if (!kurumKalibi.test(adres)) continue;
+      kurumVar = true;
+      for (const ad of eslesme[1].split(";")) {
+        const cozulen = yazarAdiCoz(ad);
+        if (cozulen && cozulen.soyad) yazarlar.push(cozulen);
+      }
+    }
+    return { yazarlar, kurumVar };
+  }
+
+  const issnSade = (deger) => String(deger || "").toUpperCase().replace(/[^0-9X]/g, "");
+
+  function indeksleriCoz(ham) {
+    const metin = String(ham || "");
+    const bulunan = [];
+    for (const [ad, kalip] of INDEKS_ADLARI) if (kalip.test(metin)) bulunan.push(ad);
+    return bulunan.length ? bulunan : (metin.trim() ? [metin.trim()] : []);
+  }
+
+  function wosAyristir(satirlar, dosyaAdi, kurumKalibi) {
+    const uyarilar = [];
+    let baslikSatiri = 0;
+    for (let i = 0; i < Math.min(satirlar.length, 10); i += 1) {
+      const duz = (satirlar[i] || []).map(harfSade);
+      if (duz.includes("article title") || duz.includes("authors") || duz.includes("source title")) {
+        baslikSatiri = i;
+        break;
+      }
+    }
+    const basliklar = (satirlar[baslikSatiri] || []).map((h) => String(h ?? ""));
+    const harita = sutunHaritasi(basliklar);
+    if (harita.baslik === undefined && harita.dergi === undefined) {
+      throw new Error("WoS sütunları tanınamadı. Dosyanın \"Full Record\" dışa aktarımı olduğundan emin ol.");
+    }
+    const al = (satir, alan) => {
+      const i = harita[alan];
+      if (i === undefined || satir[i] === null || satir[i] === undefined) return "";
+      return String(satir[i]).trim();
+    };
+
+    const kayitlar = [];
+    for (const satir of satirlar.slice(baslikSatiri + 1)) {
+      if (!satir || !satir.some((h) => h !== null && String(h).trim() !== "")) continue;
+      const baslik = al(satir, "baslik");
+      const dergi = al(satir, "dergi");
+      if (!baslik && !dergi) continue;
+      const erken = al(satir, "erkenTarih");
+      const erkenYil = (erken.match(/(20\d{2})/) || [])[1];
+      const yayinYil = (al(satir, "yil").match(/(20\d{2})/) || [])[1];
+      const belge = al(satir, "belgeTuru");
+      const adresBilgisi = kurumYazarlari(al(satir, "adresler"), kurumKalibi);
+      const tamAdlar = al(satir, "yazarTam") || al(satir, "yazarlar");
+      kayitlar.push({
+        id: al(satir, "ut") || `${sade(baslik).slice(0, 40)}|${al(satir, "doi")}`,
+        baslik,
+        dergi,
+        issn: issnSade(al(satir, "issn")),
+        eissn: issnSade(al(satir, "eissn")),
+        doi: al(satir, "doi"),
+        yil: Number(erkenYil || yayinYil || 0),
+        basimYili: Number(yayinYil || 0),
+        erkenYil: Number(erkenYil || 0),
+        belgeTuru: belge.split(";")[0].trim(),
+        erkenErisim: /early access/i.test(belge),
+        indeksler: indeksleriCoz(al(satir, "indeks")),
+        oa: al(satir, "oa"),
+        kategoriler: al(satir, "kategori"),
+        alanlar: al(satir, "alan"),
+        atif: sayiyaCevir(al(satir, "atif")) || 0,
+        quartileHam: al(satir, "quartile"),
+        kurumYazarlari: adresBilgisi.yazarlar.map((y) => y.ham),
+        kurumVar: adresBilgisi.kurumVar,
+        tumYazarlar: tamAdlar,
+      });
+    }
+    if (!kayitlar.length) uyarilar.push("Dosyada kayıt bulunamadı.");
+    const yillar = {};
+    for (const k of kayitlar) yillar[k.yil] = (yillar[k.yil] || 0) + 1;
+    const baskinYil = Object.entries(yillar).sort((a, b) => b[1] - a[1])[0];
+    if (Object.keys(yillar).length > 1) {
+      uyarilar.push(`Dosyada birden çok yıl var: ${Object.entries(yillar)
+        .map(([y, s]) => `${y}: ${s}`).join(", ")}. Kayıtlar kendi yıllarına yazılır.`);
+    }
+    const adressiz = kayitlar.filter((k) => !k.kurumVar).length;
+    if (adressiz) uyarilar.push(`${adressiz} kayıtta kurum adresi bulunamadı; bunlar kişi eşleştirmesine girmez.`);
+    return { kayitlar, uyarilar, baskinYil: baskinYil ? Number(baskinYil[0]) : new Date().getFullYear() };
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Personel listesi                                                   */
+  /* ---------------------------------------------------------------- */
+
+  function personelAyristir(satirlar) {
+    let baslikSatiri = -1;
+    for (let i = 0; i < Math.min(satirlar.length, 15); i += 1) {
+      const duz = (satirlar[i] || []).map(harfSade);
+      if (duz.includes("ad") && duz.includes("soyad")) { baslikSatiri = i; break; }
+    }
+    if (baslikSatiri < 0) throw new Error("Personel listesinde \"Ad\" ve \"Soyad\" sütunları bulunamadı.");
+    const basliklar = (satirlar[baslikSatiri] || []).map(harfSade);
+    const bul = (...adaylar) => {
+      for (const aday of adaylar) {
+        const i = basliklar.indexOf(harfSade(aday));
+        if (i >= 0) return i;
+      }
+      for (const aday of adaylar) {
+        const i = basliklar.findIndex((b) => b.includes(harfSade(aday)));
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+    const sutun = {
+      ad: bul("ad"), soyad: bul("soyad"), tip: bul("kisi tipi", "personel tipi"),
+      unvan: bul("akademik unvan", "unvan"), fakulte: bul("fakulte", "fakülte"),
+      birim: bul("birim"), cikis: bul("cikis tarihi", "çıkış tarihi"),
+    };
+    const kisiler = [];
+    for (const satir of satirlar.slice(baslikSatiri + 1)) {
+      if (!satir) continue;
+      const oku = (i) => (i >= 0 && satir[i] !== null && satir[i] !== undefined ? String(satir[i]).trim() : "");
+      const ad = oku(sutun.ad), soyad = oku(sutun.soyad);
+      if (!ad || !soyad) continue;
+      kisiler.push({
+        ad: temizAd(ad),
+        soyad: temizAd(soyad),
+        tip: oku(sutun.tip),
+        unvan: oku(sutun.unvan) || "Belirtilmemiş",
+        fakulte: oku(sutun.fakulte) || "Belirtilmemiş",
+        birim: oku(sutun.birim),
+        cikis: oku(sutun.cikis),
+      });
+    }
+    return kisiler;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Çeyreklik dosyası (SCImago SJR ya da ISSN→Q listesi)               */
+  /* ---------------------------------------------------------------- */
+
+  function quartileAyristir(satirlar) {
+    const basliklar = (satirlar[0] || []).map(harfSade);
+    const issnSutunu = basliklar.findIndex((b) => b.includes("issn"));
+    const qSutunu = basliklar.findIndex((b) => b.includes("quartile") || b === "sjr best quartile");
+    if (issnSutunu < 0 || qSutunu < 0) {
+      throw new Error("Çeyreklik dosyasında ISSN ve Quartile sütunları bulunamadı.");
+    }
+    const harita = new Map();
+    for (const satir of satirlar.slice(1)) {
+      if (!satir) continue;
+      const q = String(satir[qSutunu] ?? "").toUpperCase().match(/Q[1-4]/);
+      if (!q) continue;
+      for (const parca of String(satir[issnSutunu] ?? "").split(/[,;\s]+/)) {
+        const issn = issnSade(parca);
+        if (issn.length >= 8) {
+          const mevcut = harita.get(issn);
+          if (!mevcut || q[0] < mevcut) harita.set(issn, q[0]);   // en iyi çeyreklik
+        }
+      }
+    }
+    return harita;
+  }
+
+
+  /* ---------------------------------------------------------------- */
+  /* Eşleştirme ve senaryolar                                          */
+  /* ---------------------------------------------------------------- */
+
+  const KURUM_KALIBI = /dogus|doğuş/i;
+
+  const UNVAN_KALIPLARI = [
+    [/profes/i, "Profesör"],
+    [/doç/i, "Doçent"],
+    [/dr\.?\s*ö[gğ]r|doktor ö[gğ]retim/i, "Doktor Öğretim Üyesi"],
+    [/ö[gğ]r\.?\s*gör\.?\s*dr|ö[gğ]retim görevlisi \(dr/i, "Öğretim Görevlisi (Dr.)"],
+    [/ö[gğ]r\.?\s*gör|ö[gğ]retim görevlisi/i, "Öğretim Görevlisi"],
+    [/ar[şs]\.?\s*gör|ara[şs]t[ıi]rma görevlisi/i, "Araştırma Görevlisi"],
+    [/okutman/i, "Okutman"],
+    [/uzman/i, "Uzman"],
+  ];
+
+  const unvanSadele = (ham) => {
+    const metin = String(ham || "").trim();
+    for (const [kalip, ad] of UNVAN_KALIPLARI) if (kalip.test(metin)) return ad;
+    return metin || "Belirtilmemiş";
+  };
+
+  const personelDizini = () => durum.personel.map((kisi) => ({
+    ...kisi,
+    anahtar: yazarAdiCoz(`${kisi.soyad}, ${kisi.ad}`),
+    unvan: unvanSadele(kisi.unvan),
+    aktif: !kisi.cikis,
+    akademik: /akademik/i.test(kisi.tip || "") || !kisi.tip,
+  }));
+
+  const adjunctDizini = () => durum.adjunct.map((ad) => yazarAdiCoz(ad)).filter(Boolean);
+
+  /** Kayıtlara kişi eşleşmesi ve adjunct bilgisi ekler. */
+  function zenginlestir() {
+    const kisiler = personelDizini();
+    const adjunctlar = adjunctDizini();
+    const hepsi = [];
+    for (const yil of durum.yillar.values()) {
+      for (const kayit of yil.kayitlar) {
+        const yazarlar = (kayit.kurumYazarlari || []).map(yazarAdiCoz).filter(Boolean);
+        const eslesen = [];
+        let adjunctVar = false;
+        for (const yazar of yazarlar) {
+          if (adjunctlar.some((a) => adEslesiyorMu(yazar, a))) { adjunctVar = true; continue; }
+          const kisi = kisiler.find((k) => adEslesiyorMu(yazar, k.anahtar));
+          if (kisi) eslesen.push(kisi);
+        }
+        const q = kayitQuartile(kayit);
+        hepsi.push({ ...kayit, eslesen, adjunctVar, q,
+          oaVar: Boolean((kayit.oa || "").trim()) });
+      }
+    }
+    return hepsi;
+  }
+
+  function kayitQuartile(kayit) {
+    if (/proceedings|bildiri/i.test(kayit.belgeTuru || "") || (kayit.indeksler || []).some((i) => /CPCI/.test(i))) {
+      return "Bildiri";
+    }
+    const hamQ = String(kayit.quartileHam || "").toUpperCase().match(/Q[1-4]/);
+    if (hamQ) return hamQ[0];
+    for (const issn of [kayit.issn, kayit.eissn]) {
+      if (issn && durum.quartiller.has(issn)) return durum.quartiller.get(issn);
+    }
+    return "Sınıflandırılamayan";
+  }
+
+  function suzulmus(senaryo = durum.senaryo) {
+    const arama = sade(durum.arama);
+    return zenginlestir().filter((kayit) => {
+      if (durum.yil !== "tumu" && String(kayit.yil) !== durum.yil) return false;
+      if (senaryo === "B" && kayit.adjunctVar) return false;
+      if (arama) {
+        const havuz = sade([kayit.baslik, kayit.dergi, kayit.doi, kayit.tumYazarlar,
+          kayit.alanlar, (kayit.eslesen || []).map((k) => `${k.ad} ${k.soyad}`).join(" ")].join(" "));
+        if (!havuz.includes(arama)) return false;
+      }
+      return true;
+    });
+  }
+
+  const personelSayisi = (senaryo) => {
+    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    return senaryo === "A" ? kisiler.length + durum.adjunct.length : kisiler.length;
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Tablo çizimi                                                      */
+  /* ---------------------------------------------------------------- */
+
+  function kTablo({ basliklar, satirlar, toplam, genisIlk = 240, metinSutunlari = [] }) {
+    const bas = $("kBasliklar"), govde = $("kGovde"), etek = $("kToplam");
+    bas.textContent = ""; govde.textContent = ""; etek.textContent = "";
+    $("kTabloSarmal").hidden = !satirlar.length;
+    $("kBosDurum").hidden = satirlar.length > 0;
+    if (!satirlar.length) {
+      $("kBosDurum").textContent = durum.yillar.size
+        ? "Bu filtrelerle gösterilecek kayıt yok."
+        : "Kurum verisi yok. Aşağıdan WoS dosyasını ve personel listesini yükle.";
+      durum.sonTablo = { basliklar, satirlar: [] };
+      return;
+    }
+    const basSatir = document.createElement("tr");
+    basliklar.forEach((baslik, i) => {
+      const hucre = document.createElement("th");
+      hucre.scope = "col";
+      hucre.textContent = baslik;
+      hucre.className = i === 0 ? "ad" : "sayi";
+      if (i === 0) hucre.style.minWidth = `${genisIlk}px`;
+      basSatir.appendChild(hucre);
+    });
+    bas.appendChild(basSatir);
+    for (const satir of satirlar) {
+      const tr = document.createElement("tr");
+      satir.forEach((deger, i) => {
+        const td = document.createElement("td");
+        if (i === 0) { td.className = "ad"; td.style.minWidth = `${genisIlk}px`; td.textContent = deger; }
+        else if (metinSutunlari.includes(i)) { td.className = "metin-hucre"; td.textContent = deger ?? ""; }
+        else {
+          td.className = "sayi";
+          td.textContent = typeof deger === "number" ? bicimSifirsiz(deger) : (deger ?? "");
+          if (typeof deger === "number" && !deger) td.classList.add("bos");
+        }
+        tr.appendChild(td);
+      });
+      govde.appendChild(tr);
+    }
+    if (toplam) {
+      const tr = document.createElement("tr");
+      toplam.forEach((deger, i) => {
+        const td = document.createElement("td");
+        td.className = i === 0 ? "ad" : "sayi";
+        td.textContent = i === 0 ? deger : (typeof deger === "number" ? bicimSifirsiz(deger) : (deger ?? ""));
+        tr.appendChild(td);
+      });
+      etek.appendChild(tr);
+    }
+    durum.sonTablo = { basliklar, satirlar: toplam ? [...satirlar, toplam] : satirlar };
+  }
+
+  const yuzde = (pay, toplam) => (toplam ? `%${(100 * pay / toplam).toFixed(1).replace(".", ",")}` : "·");
+
+  /* ---------------------------------------------------------------- */
+  /* Görünümler                                                        */
+  /* ---------------------------------------------------------------- */
+
+  function ozetCiz() {
+    const a = suzulmus("A"), b = suzulmus("B");
+    const sayimlar = (liste, senaryo) => {
+      const oa = liste.filter((k) => k.oaVar).length;
+      const eslesen = liste.filter((k) => k.eslesen.length).length;
+      const personel = personelSayisi(senaryo);
+      return { yayin: liste.length, personel, oa, eslesen,
+        kisiBasi: personel ? liste.length / personel : 0 };
+    };
+    const A = sayimlar(a, "A"), B = sayimlar(b, "B");
+    const indeksSay = (liste, ad) => liste.filter((k) => k.indeksler.includes(ad)).length;
+    const satirlar = [
+      ["Yayın sayısı", A.yayin, B.yayin, B.yayin - A.yayin],
+      ["Akademik personel", A.personel, B.personel, B.personel - A.personel],
+      ["Yayın / kişi", A.kisiBasi.toFixed(2).replace(".", ","), B.kisiBasi.toFixed(2).replace(".", ","),
+        A.personel && B.personel ? `%${(100 * (B.kisiBasi - A.kisiBasi) / A.kisiBasi).toFixed(0)}` : "·"],
+      ["Açık erişimli yayın", A.oa, B.oa, B.oa - A.oa],
+      ["Açık erişim oranı", yuzde(A.oa, A.yayin), yuzde(B.oa, B.yayin), ""],
+      ["Personel listesiyle eşleşen yayın", A.eslesen, B.eslesen, B.eslesen - A.eslesen],
+    ];
+    for (const [ad] of INDEKS_ADLARI) {
+      const sa = indeksSay(a, ad), sb = indeksSay(b, ad);
+      if (sa || sb) satirlar.push([ad, sa, sb, sb - sa]);
+    }
+    kTablo({ basliklar: ["Gösterge", "A: adjunct dahil", "B: hariç", "Değişim"], satirlar, genisIlk: 260 });
+    $("kGorunumNotu").textContent = "Personel sayısı: çıkış tarihi boş olan akademik personel "
+      + "(A senaryosunda adjunct isimler eklenir). Yayın sayıları benzersiz kayıttır; "
+      + "kişi bazlı tablolarda her yayın, yayındaki her kurum yazarı için ayrı sayılır.";
+  }
+
+  function fakulteCiz() {
+    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    const kayitlar = suzulmus();
+    const fakulteler = [...new Set(kisiler.map((k) => k.fakulte))].sort((a, b) => a.localeCompare(b, "tr"));
+    const satirlar = fakulteler.map((fakulte) => {
+      const personel = kisiler.filter((k) => k.fakulte === fakulte).length;
+      const yayinlar = kayitlar.filter((kayit) => kayit.eslesen.some((k) => k.fakulte === fakulte));
+      const oa = yayinlar.filter((k) => k.oaVar).length;
+      return [fakulte, personel, yayinlar.length, personel ? Number((yayinlar.length / personel).toFixed(2)) : 0,
+        oa, yuzde(oa, yayinlar.length)];
+    }).sort((a, b) => b[3] - a[3]);
+    kTablo({ basliklar: ["Fakülte / birim", "Personel", "Yayın", "Yayın/kişi", "Açık erişim", "OA oranı"],
+      satirlar, genisIlk: 260 });
+    const eslesmeyen = kayitlar.filter((k) => !k.eslesen.length).length;
+    $("kGorunumNotu").textContent = "Ortak yazarlık nedeniyle bir yayın birden fazla fakülteye "
+      + "sayılabilir; satır toplamı genel toplamı aşabilir. "
+      + `${eslesmeyen} yayın hiçbir personel kaydıyla eşleşmedi (adjunct yayınları ve ad yazım farkları).`;
+  }
+
+  function indeksCiz() {
+    const a = suzulmus("A"), b = suzulmus("B");
+    const satirlar = INDEKS_ADLARI.map(([ad]) => {
+      const sa = a.filter((k) => k.indeksler.includes(ad)).length;
+      const sb = b.filter((k) => k.indeksler.includes(ad)).length;
+      return [ad, sa, sb, sb - sa, yuzde(sa, a.length), yuzde(sb, b.length)];
+    }).filter((s) => s[1] || s[2]);
+    kTablo({ basliklar: ["İndeks", "A", "B", "Fark", "A payı", "B payı"], satirlar, genisIlk: 260 });
+  }
+
+  const Q_SIRASI = ["Q1", "Q2", "Q3", "Q4", "Sınıflandırılamayan", "Bildiri"];
+
+  function quartileCiz() {
+    const a = suzulmus("A"), b = suzulmus("B");
+    const say = (liste, q) => liste.filter((k) => k.q === q).length;
+    const satirlar = Q_SIRASI.map((q) => [q, say(a, q), yuzde(say(a, q), a.length),
+      say(b, q), yuzde(say(b, q), b.length)]);
+    const siniflanan = (liste) => liste.filter((k) => ["Q1", "Q2", "Q3", "Q4"].includes(k.q)).length;
+    const toplam = ["Toplam", a.length, "", b.length, ""];
+    kTablo({ basliklar: ["Çeyreklik", "A: dahil", "A payı", "B: hariç", "B payı"], satirlar, toplam,
+      genisIlk: 220 });
+    const notlar = [];
+    notlar.push(`Sınıflandırılabilen yayınlarda Q1 payı — A: ${yuzde(say(a, "Q1"), siniflanan(a))}, `
+      + `B: ${yuzde(say(b, "Q1"), siniflanan(b))}; Q1+Q2 — A: `
+      + `${yuzde(say(a, "Q1") + say(a, "Q2"), siniflanan(a))}, `
+      + `B: ${yuzde(say(b, "Q1") + say(b, "Q2"), siniflanan(b))}.`);
+    if (!durum.quartiller.size && !a.some((k) => k.quartileHam)) {
+      notlar.push("Çeyreklik verisi yok: WoS dışa aktarımında JIF Quartile sütunu yoksa SCImago SJR dosyasını yükle.");
+    }
+    $("kGorunumNotu").textContent = notlar.join(" ");
+  }
+
+  function caprazCiz() {
+    const kayitlar = suzulmus();
+    const indeksler = INDEKS_ADLARI.map(([ad]) => ad)
+      .filter((ad) => kayitlar.some((k) => k.indeksler.includes(ad)));
+    const satirlar = indeksler.map((ad) => {
+      const grup = kayitlar.filter((k) => k.indeksler.includes(ad));
+      return [ad, ...Q_SIRASI.map((q) => grup.filter((k) => k.q === q).length), grup.length];
+    });
+    const toplam = ["Toplam", ...Q_SIRASI.map((q) => kayitlar.filter((k) => k.q === q).length), kayitlar.length];
+    kTablo({ basliklar: ["İndeks", ...Q_SIRASI, "Toplam"], satirlar, toplam, genisIlk: 220 });
+  }
+
+  function oaCiz() {
+    const a = suzulmus("A"), b = suzulmus("B");
+    const turler = [...new Set([...a, ...b].map((k) => (k.oa || "").trim() || "OA değil"))];
+    const satirlar = turler.map((tur) => [tur,
+      a.filter((k) => ((k.oa || "").trim() || "OA değil") === tur).length,
+      b.filter((k) => ((k.oa || "").trim() || "OA değil") === tur).length,
+    ]).sort((x, y) => y[1] - x[1]);
+    const toplam = ["Toplam", a.length, b.length];
+    kTablo({ basliklar: ["Açık erişim türü", "A", "B"], satirlar, toplam, genisIlk: 300 });
+    $("kGorunumNotu").textContent = `Açık erişim oranı — A: ${yuzde(a.filter((k) => k.oaVar).length, a.length)}, `
+      + `B: ${yuzde(b.filter((k) => k.oaVar).length, b.length)}.`;
+  }
+
+  function unvanCiz() {
+    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    const a = suzulmus("A"), b = suzulmus("B");
+    const unvanlar = [...new Set(kisiler.map((k) => k.unvan))];
+    const satirlar = unvanlar.map((unvan) => {
+      const sayi = kisiler.filter((k) => k.unvan === unvan).length;
+      const ya = a.filter((kayit) => kayit.eslesen.some((k) => k.unvan === unvan)).length;
+      const yb = b.filter((kayit) => kayit.eslesen.some((k) => k.unvan === unvan)).length;
+      return [unvan, sayi, ya, yb, sayi ? Number((ya / sayi).toFixed(2)) : 0];
+    }).sort((x, y) => y[2] - x[2]);
+    kTablo({ basliklar: ["Unvan", "Kişi", "Yayın (A)", "Yayın (B)", "Yayın/kişi (A)"], satirlar, genisIlk: 240 });
+  }
+
+  function kisiCiz() {
+    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    const kayitlar = suzulmus();
+    const sayimlar = new Map();
+    for (const kayit of kayitlar) {
+      for (const kisi of kayit.eslesen) {
+        const anahtar = `${kisi.ad} ${kisi.soyad}`;
+        if (!sayimlar.has(anahtar)) sayimlar.set(anahtar, { kisi, yayin: 0, oa: 0, q1: 0 });
+        const veri = sayimlar.get(anahtar);
+        veri.yayin += 1;
+        if (kayit.oaVar) veri.oa += 1;
+        if (kayit.q === "Q1") veri.q1 += 1;
+      }
+    }
+    const satirlar = [...sayimlar.entries()]
+      .map(([ad, v]) => [ad, v.kisi.unvan, v.kisi.fakulte, v.yayin, v.q1, v.oa])
+      .sort((x, y) => y[3] - x[3]);
+    const toplamEslesme = satirlar.reduce((t, s) => t + s[3], 0);
+    const ilk = (n) => satirlar.slice(0, n).reduce((t, s) => t + s[3], 0);
+    kTablo({ basliklar: ["Kişi", "Unvan", "Fakülte", "Yayın", "Q1", "Açık erişim"], satirlar,
+      genisIlk: 220, metinSutunlari: [1, 2] });
+    $("kGorunumNotu").textContent = `${kisiler.length} akademik personelin ${satirlar.length}'i `
+      + `(${yuzde(satirlar.length, kisiler.length)}) en az bir yayına sahip. `
+      + `En üretken 10 kişi eşleşmelerin ${yuzde(ilk(10), toplamEslesme)}'ini, ilk 20 kişi `
+      + `${yuzde(ilk(20), toplamEslesme)}'ini karşılıyor.`;
+  }
+
+  function yilCiz() {
+    const hepsi = zenginlestir();
+    const yillar = [...new Set(hepsi.map((k) => k.yil))].filter(Boolean).sort();
+    const satirlar = yillar.map((yil) => {
+      const a = hepsi.filter((k) => k.yil === yil);
+      const b = a.filter((k) => !k.adjunctVar);
+      const adjunct = a.length - b.length;
+      const oaA = a.filter((k) => k.oaVar).length;
+      const atif = a.reduce((t, k) => t + (k.atif || 0), 0);
+      return [String(yil), a.length, b.length, adjunct, yuzde(adjunct, a.length),
+        oaA, yuzde(oaA, a.length), yuzde(b.filter((k) => k.oaVar).length, b.length),
+        a.length ? Number((atif / a.length).toFixed(2)) : 0];
+    });
+    kTablo({ basliklar: ["Yıl", "A", "B", "Adjunct", "Adj. %", "OA (A)", "OA % (A)", "OA % (B)", "Atıf/yayın"],
+      satirlar, genisIlk: 120 });
+  }
+
+  function dergiCiz() {
+    const kayitlar = suzulmus();
+    const sayimlar = new Map();
+    for (const kayit of kayitlar) {
+      const ad = kayit.dergi || "(boş)";
+      if (!sayimlar.has(ad)) sayimlar.set(ad, { yayin: 0, q: kayit.q, oa: 0 });
+      const veri = sayimlar.get(ad);
+      veri.yayin += 1;
+      if (kayit.oaVar) veri.oa += 1;
+    }
+    const satirlar = [...sayimlar.entries()].map(([ad, v]) => [ad, v.q, v.yayin, v.oa])
+      .sort((x, y) => y[2] - x[2]).slice(0, 100);
+    kTablo({ basliklar: ["Dergi", "Çeyreklik", "Yayın", "Açık erişim"], satirlar, genisIlk: 320,
+      metinSutunlari: [1] });
+  }
+
+  function alanCiz() {
+    const kayitlar = suzulmus();
+    const sayimlar = new Map();
+    for (const kayit of kayitlar) {
+      for (const alan of String(kayit.alanlar || "").split(";").map((a) => a.trim()).filter(Boolean)) {
+        sayimlar.set(alan, (sayimlar.get(alan) || 0) + 1);
+      }
+    }
+    const satirlar = [...sayimlar.entries()].map(([ad, sayi]) => [ad, sayi, yuzde(sayi, kayitlar.length)])
+      .sort((x, y) => y[1] - x[1]).slice(0, 60);
+    kTablo({ basliklar: ["Araştırma alanı", "Yayın", "Pay"], satirlar, genisIlk: 320 });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Üst kutular, filtreler, çizim                                     */
+  /* ---------------------------------------------------------------- */
+
+  function kutulariCiz() {
+    const a = suzulmus("A"), b = suzulmus("B");
+    const secili = durum.senaryo === "A" ? a : b;
+    const personel = personelSayisi(durum.senaryo);
+    const oa = secili.filter((k) => k.oaVar).length;
+    const q1 = secili.filter((k) => k.q === "Q1").length;
+    const siniflanan = secili.filter((k) => ["Q1", "Q2", "Q3", "Q4"].includes(k.q)).length;
+    const kutular = [
+      [String(secili.length), "yayın", "vurgu"],
+      [String(personel), "akademik personel", ""],
+      [personel ? (secili.length / personel).toFixed(2).replace(".", ",") : "·", "yayın / kişi", ""],
+      [yuzde(oa, secili.length).replace("%", ""), "açık erişim %", ""],
+      [yuzde(q1, siniflanan).replace("%", ""), "Q1 payı %", ""],
+      [String(a.filter((k) => k.adjunctVar).length), "adjunct yayını", a.length ? "uyari" : ""],
+    ];
+    const kap = $("kKutular");
+    kap.textContent = "";
+    for (const [sayi, etiket, sinif] of kutular) {
+      const kutu = document.createElement("div");
+      kutu.className = `kutu ${sinif}`.trim();
+      const b2 = document.createElement("b");
+      b2.textContent = sayi;
+      const s = document.createElement("span");
+      s.textContent = etiket;
+      kutu.append(b2, s);
+      kap.appendChild(kutu);
+    }
+    const yillar = [...new Set(zenginlestir().map((k) => k.yil))].filter(Boolean).sort();
+    $("kAltBaslik").textContent = durum.yillar.size
+      ? `${yillar[0]}–${yillar[yillar.length - 1]} · ${zenginlestir().length} kayıt · `
+        + `${durum.personel.length} personel satırı · ${durum.adjunct.length} adjunct adı`
+        + (durum.quartiller.size ? ` · ${bicim(durum.quartiller.size)} dergi çeyrekliği` : " · çeyreklik verisi yok")
+      : "WoS dışa aktarımını ve personel listesini yükle.";
+  }
+
+  function kCiz() {
+    chipCiz("kSenaryoGrubu", [["A", "A: adjunct dahil"], ["B", "B: hariç"]], durum.senaryo,
+      (deger) => { durum.senaryo = deger; kCiz(); });
+    const yillar = [...new Set(zenginlestir().map((k) => k.yil))].filter(Boolean).sort();
+    chipCiz("kYilGrubu", [["tumu", "Tümü"], ...yillar.map((y) => [String(y), String(y)])], durum.yil,
+      (deger) => { durum.yil = deger; kCiz(); });
+    chipCiz("kGorunumGrubu", KURUM_GORUNUMLERI, durum.gorunum,
+      (deger) => { durum.gorunum = deger; kCiz(); });
+    kutulariCiz();
+    yillariCiz();
+    $("kGorunumNotu").textContent = "";
+    const ciziciler = { ozet: ozetCiz, fakulte: fakulteCiz, indeks: indeksCiz, quartile: quartileCiz,
+      capraz: caprazCiz, oa: oaCiz, unvan: unvanCiz, kisi: kisiCiz, yil: yilCiz, dergi: dergiCiz,
+      alan: alanCiz };
+    (ciziciler[durum.gorunum] || ozetCiz)();
+    $("kPersonelNotu").textContent = durum.personel.length
+      ? `${durum.personel.length} personel satırı yüklü; ${personelDizini().filter((k) => k.aktif && k.akademik).length} aktif akademik personel sayılıyor.`
+      : "Personel listesi yüklenmedi: fakülte, unvan ve kişi bazlı tablolar boş kalır.";
+  }
+
+  function yillariCiz() {
+    const kap = $("kYillarListesi");
+    kap.textContent = "";
+    const anahtarlar = [...durum.yillar.keys()].sort().reverse();
+    if (!anahtarlar.length) {
+      const bos = document.createElement("span");
+      bos.className = "kucuk-not";
+      bos.textContent = "Henüz WoS dosyası yok.";
+      kap.appendChild(bos);
+      return;
+    }
+    for (const anahtar of anahtarlar) {
+      const yil = durum.yillar.get(anahtar);
+      const etiket = document.createElement("span");
+      etiket.className = "ay-etiket";
+      const sec = document.createElement("button");
+      sec.type = "button";
+      sec.textContent = `${anahtar} · ${yil.kayitlar.length}`;
+      sec.addEventListener("click", () => {
+        durum.yil = durum.yil === anahtar ? "tumu" : anahtar;
+        kCiz();
+      });
+      const sil = document.createElement("button");
+      sil.type = "button";
+      sil.textContent = "×";
+      let onay = false;
+      sil.addEventListener("click", async () => {
+        if (!onay) {
+          onay = true; sil.textContent = "sil?";
+          setTimeout(() => { onay = false; sil.textContent = "×"; }, 4000);
+          return;
+        }
+        await yilSil(anahtar);
+      });
+      etiket.append(sec, sil);
+      kap.appendChild(etiket);
+    }
+  }
+
+
+  /* ---------------------------------------------------------------- */
+  /* Depo                                                              */
+  /* ---------------------------------------------------------------- */
+
+  const KY = { yillar: "kp-yillar", personel: "kp-personel", adjunct: "kp-adjunct", q: "kp-q" };
+  const PARCA = 100;   // belge başına kayıt (256 KB sınırı için)
+
+  function yereldenOku() {
+    const oku = (anahtar, varsayilan) => {
+      try { return JSON.parse(localStorage.getItem(anahtar) || varsayilan); } catch { return JSON.parse(varsayilan); }
+    };
+    durum.yillar = new Map(Object.entries(oku(KY.yillar, "{}")));
+    durum.personel = oku(KY.personel, "[]");
+    durum.adjunct = oku(KY.adjunct, "[]");
+    durum.quartiller = new Map(Object.entries(oku(KY.q, "{}")));
+  }
+
+  function yereleYaz() {
+    try {
+      localStorage.setItem(KY.yillar, JSON.stringify(Object.fromEntries(durum.yillar)));
+      localStorage.setItem(KY.personel, JSON.stringify(durum.personel));
+      localStorage.setItem(KY.adjunct, JSON.stringify(durum.adjunct));
+      localStorage.setItem(KY.q, JSON.stringify(Object.fromEntries(durum.quartiller)));
+    } catch { /* depo dolu olabilir */ }
+  }
+
+  function parcalariTopla(belgeler) {
+    const yillar = new Map();
+    for (const [, veri] of belgeler) {
+      if (!veri || !Array.isArray(veri.kayitlar)) continue;
+      const anahtar = String(veri.yil);
+      if (!yillar.has(anahtar)) {
+        yillar.set(anahtar, { yil: veri.yil, dosya: veri.dosya, yuklenme: veri.yuklenme, kayitlar: [] });
+      }
+      yillar.get(anahtar).kayitlar.push(...veri.kayitlar);
+    }
+    return yillar;
+  }
+
+  async function depoyaBaglan() {
+    let db = null;
+    try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch { db = null; }
+    durum.db = db;
+    if (!db) { yereldenOku(); kCiz(); return; }
+    db.collection("kurumYillar").onSnapshot((anlik) => {
+      durum.yillar = parcalariTopla(anlik.docs.map((b) => [b.id, b.data()]));
+      kCiz();
+    }, () => {});
+    db.collection("kurumQ").onSnapshot((anlik) => {
+      const harita = new Map();
+      for (const belge of anlik.docs) {
+        const veri = belge.data();
+        for (const [issn, q] of Object.entries((veri && veri.esleme) || {})) harita.set(issn, q);
+      }
+      durum.quartiller = harita;
+      kCiz();
+    }, () => {});
+    db.doc("kurumAyarlar/personel").onSnapshot((anlik) => {
+      durum.personel = (anlik.exists && anlik.data() && anlik.data().kisiler) || [];
+      kCiz();
+    }, () => {});
+    db.doc("kurumAyarlar/adjunct").onSnapshot((anlik) => {
+      durum.adjunct = (anlik.exists && anlik.data() && anlik.data().adlar) || [];
+      $("kAdjunctListesi").value = durum.adjunct.join("\n");
+      kCiz();
+    }, () => {});
+  }
+
+  async function yilYaz(yil, kayitlar, dosya) {
+    const anahtar = String(yil);
+    const parcalar = [];
+    for (let i = 0; i < kayitlar.length; i += PARCA) parcalar.push(kayitlar.slice(i, i + PARCA));
+    if (!parcalar.length) parcalar.push([]);
+    const belge = (parca, i) => ({ yil: Number(yil), parca: i, dosya,
+      yuklenme: new Date().toISOString(), kayitlar: parca });
+    if (durum.db) {
+      const eskiler = await durum.db.collection("kurumYillar").get();
+      for (const eski of eskiler.docs) {
+        if (eski.id.startsWith(`${anahtar}-p`)) await durum.db.doc(`kurumYillar/${eski.id}`).delete();
+      }
+      for (let i = 0; i < parcalar.length; i += 1) {
+        await durum.db.doc(`kurumYillar/${anahtar}-p${i}`).set(belge(parcalar[i], i));
+      }
+    } else {
+      durum.yillar.set(anahtar, { yil: Number(yil), dosya, yuklenme: new Date().toISOString(), kayitlar });
+      yereleYaz();
+      kCiz();
+    }
+  }
+
+  async function yilSil(anahtar) {
+    if (durum.db) {
+      const belgeler = await durum.db.collection("kurumYillar").get();
+      for (const belge of belgeler.docs) {
+        if (belge.id.startsWith(`${anahtar}-p`)) await durum.db.doc(`kurumYillar/${belge.id}`).delete();
+      }
+    } else {
+      durum.yillar.delete(anahtar);
+      yereleYaz();
+      kCiz();
+    }
+    gunluk(`${anahtar} yılı silindi.`);
+  }
+
+  async function personelYaz(kisiler) {
+    if (durum.db) await durum.db.doc("kurumAyarlar/personel").set({ kisiler,
+      guncelleme: new Date().toISOString() });
+    else { durum.personel = kisiler; yereleYaz(); kCiz(); }
+  }
+
+  async function adjunctYaz(adlar) {
+    if (durum.db) await durum.db.doc("kurumAyarlar/adjunct").set({ adlar });
+    else { durum.adjunct = adlar; yereleYaz(); kCiz(); }
+  }
+
+  async function quartilleriYaz(harita) {
+    const girdiler = [...harita.entries()];
+    if (durum.db) {
+      const eskiler = await durum.db.collection("kurumQ").get();
+      for (const eski of eskiler.docs) await durum.db.doc(`kurumQ/${eski.id}`).delete();
+      for (let i = 0; i * 2000 < girdiler.length; i += 1) {
+        const dilim = Object.fromEntries(girdiler.slice(i * 2000, (i + 1) * 2000));
+        await durum.db.doc(`kurumQ/p${i}`).set({ esleme: dilim });
+      }
+    } else {
+      durum.quartiller = harita;
+      yereleYaz();
+      kCiz();
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Dosya yükleme                                                     */
+  /* ---------------------------------------------------------------- */
+
+  const gunluk = (metin) => {
+    const alan = $("kGunluk");
+    alan.textContent = `${alan.textContent}${alan.textContent ? "\n" : ""}${metin}`;
+    alan.scrollTop = alan.scrollHeight;
+  };
+
+  async function satirlariOku(dosya) {
+    const tampon = await dosya.arrayBuffer();
+    const kitap = XLSX.read(tampon, { type: "array", cellDates: true });
+    const sayfa = kitap.Sheets[kitap.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(sayfa, { header: 1, raw: true, defval: null });
+  }
+
+  async function wosYukle(dosya) {
+    if (!dosya) return;
+    $("kDosyaDurumu").textContent = `${dosya.name} okunuyor…`;
+    try {
+      const satirlar = await satirlariOku(dosya);
+      const sonuc = wosAyristir(satirlar, dosya.name, KURUM_KALIBI);
+      durum.bekleyen = { ...sonuc, dosyaAdi: dosya.name };
+      const yillar = [...new Set(sonuc.kayitlar.map((k) => k.yil))].filter(Boolean).sort();
+      secenekDoldur($("kYilSecimi"), [["hepsi", "kayıtlardaki yıllar"], ...yillar.map((y) => [String(y), String(y)])],
+        "hepsi");
+      $("kOnaySatiri").hidden = false;
+      const kurumlu = sonuc.kayitlar.filter((k) => k.kurumVar).length;
+      $("kDosyaDurumu").textContent = `${dosya.name} · ${sonuc.kayitlar.length} kayıt · `
+        + `${kurumlu} kayıtta kurum adresi`;
+      gunluk(`${dosya.name}: ${sonuc.kayitlar.length} kayıt okundu (${yillar.join(", ")}).`);
+      for (const uyari of sonuc.uyarilar) gunluk(`  ! ${uyari}`);
+      gunluk("  → \"Kaydet\" ile panele yaz.");
+    } catch (hata) {
+      durum.bekleyen = null;
+      $("kOnaySatiri").hidden = true;
+      $("kDosyaDurumu").textContent = "Dosya okunamadı.";
+      gunluk(`HATA: ${hata.message || hata}`);
+    }
+  }
+
+  async function bekleyeniKaydet() {
+    if (!durum.bekleyen) { bilgiVer("Önce WoS dosyası seç."); return; }
+    const secim = $("kYilSecimi").value;
+    const kayitlar = durum.bekleyen.kayitlar;
+    try {
+      if (secim === "hepsi") {
+        const yillar = [...new Set(kayitlar.map((k) => k.yil))].filter(Boolean);
+        for (const yil of yillar) {
+          await yilYaz(yil, kayitlar.filter((k) => k.yil === yil), durum.bekleyen.dosyaAdi);
+          gunluk(`${yil}: ${kayitlar.filter((k) => k.yil === yil).length} kayıt kaydedildi.`);
+        }
+      } else {
+        await yilYaz(Number(secim), kayitlar.map((k) => ({ ...k, yil: Number(secim) })), durum.bekleyen.dosyaAdi);
+        gunluk(`${secim}: ${kayitlar.length} kayıt kaydedildi.`);
+      }
+      bilgiVer("Kurum verisi güncellendi.");
+      durum.bekleyen = null;
+      $("kOnaySatiri").hidden = true;
+      $("kWosGirisi").value = "";
+    } catch (hata) {
+      gunluk(`HATA: ${yazmaHatasi(hata)}`);
+      bilgiVer(yazmaHatasi(hata));
+    }
+  }
+
+  async function personelYukle(dosya) {
+    if (!dosya) return;
+    try {
+      const kisiler = personelAyristir(await satirlariOku(dosya));
+      await personelYaz(kisiler);
+      const aktif = kisiler.filter((k) => !k.cikis && (/akademik/i.test(k.tip || "") || !k.tip)).length;
+      gunluk(`${dosya.name}: ${kisiler.length} personel satırı, ${aktif} aktif akademik personel.`);
+      bilgiVer("Personel listesi kaydedildi.");
+    } catch (hata) {
+      gunluk(`HATA: ${hata.message || hata}`);
+    }
+    $("kPersonelGirisi").value = "";
+  }
+
+  async function sjrYukle(dosya) {
+    if (!dosya) return;
+    try {
+      let satirlar;
+      if (/\.csv$/i.test(dosya.name)) {
+        const metin = await dosya.text();
+        const ayrac = metin.split("\n")[0].includes(";") ? ";" : ",";
+        satirlar = metin.split(/\r?\n/).filter(Boolean).map((s) => s.split(ayrac)
+          .map((h) => h.replace(/^"|"$/g, "")));
+      } else {
+        satirlar = await satirlariOku(dosya);
+      }
+      const harita = quartileAyristir(satirlar);
+      await quartilleriYaz(harita);
+      gunluk(`${dosya.name}: ${harita.size} ISSN için çeyreklik yüklendi.`);
+      bilgiVer("Çeyreklik verisi kaydedildi.");
+    } catch (hata) {
+      gunluk(`HATA: ${hata.message || hata}`);
+    }
+    $("kSjrGirisi").value = "";
+  }
+
+  async function kCsvIndir() {
+    if (!durum.sonTablo || !durum.sonTablo.satirlar.length) { bilgiVer("İndirilecek satır yok."); return; }
+    const kacir = (h) => {
+      const yazi = h === null || h === undefined ? "" : String(h);
+      return /[";\n]/.test(yazi) ? `"${yazi.replace(/"/g, '""')}"` : yazi;
+    };
+    const icerik = [durum.sonTablo.basliklar, ...durum.sonTablo.satirlar]
+      .map((s) => s.map(kacir).join(";")).join("\r\n");
+    const dosyaAdi = `kurum-${durum.gorunum}-${new Date().toISOString().slice(0, 10)}.csv`;
+    let indir = null;
+    try { indir = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch { indir = null; }
+    if (indir) {
+      try { await indir.save({ filename: dosyaAdi, data: `\ufeff${icerik}` }); bilgiVer("CSV kaydedildi."); }
+      catch (hata) { if (hata && hata.code !== "cancelled") bilgiVer("İndirme tamamlanamadı."); }
+      return;
+    }
+    const bag = document.createElement("a");
+    bag.href = URL.createObjectURL(new Blob([`\ufeff${icerik}`], { type: "text/csv;charset=utf-8" }));
+    bag.download = dosyaAdi;
+    bag.click();
+    URL.revokeObjectURL(bag.href);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Bağlantılar                                                       */
+  /* ---------------------------------------------------------------- */
+
+  $("kWosDugmesi").addEventListener("click", () => $("kWosGirisi").click());
+  $("kWosGirisi").addEventListener("change", (olay) => wosYukle(olay.target.files[0]));
+  $("kPersonelDugmesi").addEventListener("click", () => $("kPersonelGirisi").click());
+  $("kPersonelGirisi").addEventListener("change", (olay) => personelYukle(olay.target.files[0]));
+  $("kSjrDugmesi").addEventListener("click", () => $("kSjrGirisi").click());
+  $("kSjrGirisi").addEventListener("change", (olay) => sjrYukle(olay.target.files[0]));
+  $("kKaydetDugmesi").addEventListener("click", bekleyeniKaydet);
+  $("kCsvDugmesi").addEventListener("click", kCsvIndir);
+  $("kArama").addEventListener("input", (olay) => { durum.arama = olay.target.value; kCiz(); });
+  $("kAdjunctKaydet").addEventListener("click", async () => {
+    const adlar = $("kAdjunctListesi").value.split("\n").map(temizAd).filter(Boolean);
+    try { await adjunctYaz(adlar); bilgiVer(`${adlar.length} adjunct adı kaydedildi.`); }
+    catch (hata) { bilgiVer(yazmaHatasi(hata)); }
+  });
+
+  const birak = $("kBirak");
+  birak.addEventListener("dragover", (olay) => { olay.preventDefault(); birak.classList.add("uzerinde"); });
+  birak.addEventListener("dragleave", () => birak.classList.remove("uzerinde"));
+  birak.addEventListener("drop", (olay) => {
+    olay.preventDefault();
+    birak.classList.remove("uzerinde");
+    wosYukle(olay.dataTransfer.files[0]);
+  });
+
+  // Panel anahtarı
+  let bolum = "adjunct";
+  const bolumCiz = () => {
+    chipCiz("modGrubu", [["adjunct", "Adjunct paneli"], ["kurum", "Kurum analizi"]], bolum, (deger) => {
+      bolum = deger;
+      bolumCiz();
+    });
+    $("adjunctBolum").hidden = bolum !== "adjunct";
+    $("kurumBolum").hidden = bolum !== "kurum";
+    if (bolum === "kurum") kCiz();
+  };
+  bolumCiz();
+  kCiz();
+  depoyaBaglan();
+
+  window.KurumPaneli = { durum, wosAyristir, personelAyristir, quartileAyristir, yazarAdiCoz,
+    adEslesiyorMu, kurumYazarlari };
+  });
 })();
 </script>
