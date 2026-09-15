@@ -137,6 +137,35 @@
   .alan textarea { min-height: 58px; resize: vertical; }
   .alan-ikili { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
   .duzeltildi { border-color: var(--accent) !important; }
+  /* --- Telefon düzeni --- */
+  .kart-liste { display: flex; flex-direction: column; }
+  .makale-kart {
+    display: flex; flex-direction: column; gap: 4px; padding: 12px 14px;
+    border-bottom: 1px solid var(--line); cursor: pointer; text-align: left;
+    background: transparent; border-left: 0; border-right: 0; border-top: 0; width: 100%;
+  }
+  .makale-kart:active { background: var(--accent-soft); }
+  .makale-kart b { font-weight: 600; }
+  .makale-kart .ust { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-soft); font-size: 12px; }
+  .makale-kart .tutar { font-family: var(--mono); color: var(--ink); }
+  @media (max-width: 640px) {
+    .sayfa { padding-inline: 14px; padding-block: 18px 40px; gap: 12px; }
+    .tepe h1 { font-size: 21px; }
+    .kutular { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 4px; }
+    .kutu { min-width: 96px; padding: 8px 12px; }
+    .kutu b { font-size: 18px; }
+    .araclar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+    .araclar .grup { flex-wrap: nowrap; }
+    .ara { margin-left: 0; }
+    .ara input { width: 190px; }
+    .tablo-sarmal { max-height: none; }
+    th, td { padding: 8px 10px; }
+    th.ad, td.ad { min-width: 150px !important; }
+    .gorunum-notu-gizle { display: none; }
+    .yukle { padding: 14px; }
+    .cekmece { padding: 16px; width: 100%; }
+  }
+
   .bilgi {
     position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 20;
     background: var(--accent); color: var(--accent-ink); padding: 10px 18px; border-radius: 999px;
@@ -919,6 +948,15 @@
 
   function tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar = [], metinSutunlari = [],
                       satirTiklama = null, genisIlk = 220 }) {
+    const sarmal = $("tabloSarmal");
+    if (!sarmal.querySelector("#tablo")) {          // kart listesinden tabloya dönüş
+      sarmal.textContent = "";
+      const tablo = document.createElement("table");
+      tablo.id = "tablo";
+      tablo.innerHTML = "<thead id=\"tabloBasliklari\"></thead><tbody id=\"tabloGovdesi\"></tbody>"
+        + "<tfoot id=\"tabloToplami\"></tfoot>";
+      sarmal.appendChild(tablo);
+    }
     const bas = $("tabloBasliklari"), govde = $("tabloGovdesi"), etek = $("tabloToplami");
     bas.textContent = ""; govde.textContent = ""; etek.textContent = "";
     $("tabloSarmal").hidden = !satirlar.length;
@@ -1089,10 +1127,68 @@
     tabloYaz({ basliklar, satirlar, genisIlk: 320 });
   }
 
+  const telefon = () => window.matchMedia("(max-width: 640px)").matches;
+
+  /** Telefonda tablo yerine okunur kart listesi. */
+  function makaleKartlari(kayitlar) {
+    const sarmal = $("tabloSarmal");
+    $("bosDurum").hidden = kayitlar.length > 0;
+    sarmal.hidden = !kayitlar.length;
+    if (!kayitlar.length) {
+      $("bosDurum").textContent = "Bu filtrelerle gösterilecek makale yok.";
+      return;
+    }
+    sarmal.textContent = "";
+    const liste = document.createElement("div");
+    liste.className = "kart-liste";
+    for (const kayit of kayitlar) {
+      const kart = document.createElement("button");
+      kart.type = "button";
+      kart.className = "makale-kart";
+      const ust = document.createElement("div");
+      ust.className = "ust";
+      const sol = document.createElement("span");
+      sol.textContent = `${kayit.kisi} · ${donemEtiketi(kayit.donem)}`;
+      const sag = document.createElement("span");
+      sag.className = "tutar";
+      sag.textContent = kayit.tutar ? `${bicim(kayit.tutar)} ${kayit.paraBirimi}` : "—";
+      ust.append(sol, sag);
+      const baslik = document.createElement("b");
+      baslik.textContent = kayit.baslik || "(başlıksız)";
+      const alt = document.createElement("div");
+      alt.className = "ust";
+      const dergi = document.createElement("span");
+      dergi.textContent = `${kayit.qGoster} · ${kayit.dergi || "—"}`;
+      const rozetler = document.createElement("span");
+      if (kayit.kontrolEdildi) {
+        const r = document.createElement("span");
+        r.className = "rozet onay";
+        r.textContent = "kontrol edildi";
+        rozetler.appendChild(r);
+      } else if (kayit.sorunlar.length) {
+        const r = document.createElement("span");
+        r.className = "rozet uyari";
+        r.textContent = kayit.sorunlar[0];
+        rozetler.appendChild(r);
+      }
+      alt.append(dergi, rozetler);
+      kart.append(ust, baslik, alt);
+      kart.addEventListener("click", () => kayitFormuAc(kayit.id));
+      liste.appendChild(kart);
+    }
+    sarmal.appendChild(liste);
+    durum.sonTablo = {
+      basliklar: ["Kişi", "Dönem", "Makale", "Dergi", "Q", "Tutar", "Birim"],
+      satirlar: kayitlar.map((k) => [k.kisi, donemEtiketi(k.donem), k.baslik, k.dergi,
+        k.qGoster, k.tutar ?? "", k.paraBirimi]),
+    };
+  }
+
   function makaleleriCiz() {
     const kayitlar = suzulmus().sort((a, b) => b.donem.localeCompare(a.donem)
       || a.kisi.localeCompare(b.kisi, "tr") || (Number(a.sira) || 0) - (Number(b.sira) || 0));
     durum.sonListe = kayitlar;
+    if (telefon()) { makaleKartlari(kayitlar); return; }
     const basliklar = ["Kişi", "Dönem", "Durum", "Makale", "Dergi", "Q", "Yayın tarihi",
       "Tutar", "Birim", "Kontrol notu"];
     const satirlar = kayitlar.map((k) => {
@@ -1735,6 +1831,13 @@
 
   // Ayrıştırıcı dışarıdan da çağrılabilsin (veri aktarımı ve testler için)
   window.YayinPaneli = { dosyayiAyristir, kimlikUret, quartileCoz, durum };
+
+  let sonGenislik = window.innerWidth;
+  window.addEventListener("resize", () => {
+    const genis = window.innerWidth;
+    if ((genis <= 640) !== (sonGenislik <= 640)) { sonGenislik = genis; ciz(); }
+    sonGenislik = genis;
+  });
 
   ciz();
   depoyaBaglan();
