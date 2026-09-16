@@ -457,7 +457,10 @@
         <div class="aylar" id="kYillarListesi"></div>
         <p class="kucuk-not" id="kPersonelNotu"></p>
         <div class="alan">
-          <span>Adjunct / dış bağlantılı isimler (senaryo B'de çıkarılır) — her satıra bir ad</span>
+          <span>Adjunct / dış bağlantılı isimler (senaryo B'de çıkarılır) — her satıra bir ad.
+            Sözleşmesi tek veritabanına bağlıysa adın yanına yazın:
+            <b>Dragan Pamucar | Scopus</b> ya da <b>M. I. Sayyed | WoS</b>. Boş bırakılırsa
+            iki veritabanı da sayılır.</span>
           <textarea id="kAdjunctListesi" style="min-height: 96px;"></textarea>
         </div>
         <div class="satir">
@@ -584,7 +587,7 @@
     ["ozet", "Kişi özeti"],
     ["dergi", "Dergi"],
     ["dagilim", "Ödeme dağılımı"],
-    ["kayitlar", "Makaleler"],
+    ["kayitlar", "Makaleler · düzenle"],
   ];
   const KONTROL_SUZGECLERI = [
     ["hepsi", "Tümü"],
@@ -1165,7 +1168,7 @@
     });
     const kayitGorunumu = durum.gorunum === "kayitlar";
     $("kontrolGrubu").hidden = !kayitGorunumu;
-    $("kayitEkleDugmesi").hidden = !kayitGorunumu;
+    $("kayitEkleDugmesi").hidden = false;   // elle kayıt ekleme her görünümde açık
     if (kayitGorunumu) {
       chipCiz("kontrolGrubu", KONTROL_SUZGECLERI, durum.kontrolSuzgeci,
         (deger) => { durum.kontrolSuzgeci = deger; ciz(); });
@@ -2675,7 +2678,31 @@
     akademik: /akademik/i.test(kisi.tip || "") || !kisi.tip,
   }));
 
-  const adjunctDizini = () => durum.adjunct.map((ad) => yazarAdiCoz(ad)).filter(Boolean);
+  /**
+   * Adjunct satırı "Ad Soyad" ya da "Ad Soyad | Scopus" biçiminde olur:
+   * boru işaretinden sonra yazan veritabanı, o kişinin sözleşmesi gereği
+   * yayınlarının hangi kaynaktan sayılacağını söyler (WoS, Scopus, ikisi).
+   */
+  function adjunctSatiriCoz(satir) {
+    const [adKismi, kaynakKismi = ""] = String(satir || "").split("|");
+    const anahtar = yazarAdiCoz(adKismi);
+    if (!anahtar) return null;
+    const duz = sade(kaynakKismi);
+    let kaynak = "hepsi";
+    if (duz.includes("scopus") && duz.includes("wos")) kaynak = "hepsi";
+    else if (duz.includes("scopus")) kaynak = "Scopus";
+    else if (duz.includes("wos") || duz.includes("web of science")) kaynak = "WoS";
+    return { ...anahtar, kaynak, etiket: temizAd(adKismi) };
+  }
+
+  const adjunctDizini = () => durum.adjunct.map(adjunctSatiriCoz).filter(Boolean);
+
+  /** Kayıt, bu adjunctın sözleşmesindeki veritabanında görünüyor mu? */
+  function adjunctKaynagiUyuyor(adjunct, kayit) {
+    if (!adjunct || adjunct.kaynak === "hepsi") return true;
+    const kaynaklar = kayit.kaynaklar || [kayit.kaynak || "WoS"];
+    return kaynaklar.includes(adjunct.kaynak);
+  }
 
   /**
    * Bildiriler (proceedings paper) yayın analizine girmez; sayıları yalnızca
@@ -2769,9 +2796,14 @@
       const kurumAdlari = [];
       let adjunctVar = false;
       for (const yazar of yazarlar) {
-        if (adjunctlar.some((a) => adEslesiyorMu(yazar, a))) {
-          adjunctVar = true;
-          kurumAdlari.push(yazar.ham);
+        const adjunct = adjunctlar.find((a) => adEslesiyorMu(yazar, a));
+        if (adjunct) {
+          // Sözleşmesi yalnız WoS ya da yalnız Scopus olan adjunct için
+          // diğer veritabanından gelen yayın sayılmaz.
+          if (adjunctKaynagiUyuyor(adjunct, kayit)) {
+            adjunctVar = true;
+            kurumAdlari.push(yazar.ham);
+          }
           continue;
         }
         const kisi = kisiBul(yazar, kisiler, dizin);
@@ -3157,8 +3189,9 @@
           unvan: kisi.unvan, fakulte: kisi.fakulte };
       }
       const adjunct = adjunctlar.find((a) => adEslesiyorMu(yazar, a));
-      if (adjunct) return { anahtar: `a:${sade(adjunct.ham)}`, ad: adjunct.ham, durum: "Adjunct",
-        unvan: "—", fakulte: "—" };
+      if (adjunct) return { anahtar: `a:${sade(adjunct.ham)}`, ad: adjunct.etiket || adjunct.ham,
+        durum: "Adjunct", unvan: adjunct.kaynak === "hepsi" ? "—" : `${adjunct.kaynak} sözleşmesi`,
+        fakulte: "—" };
       // Listede yok: aynı kişinin farklı yazımlarını birleştir
       const mevcut = gruplar.find((g) => g.durum === "Listede yok"
         && g.yazarlar.some((y) => adEslesiyorMu(yazar, y)));
