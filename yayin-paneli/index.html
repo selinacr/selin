@@ -1974,6 +1974,7 @@
     arama: "",
     bekleyen: null,
     sonTablo: null,
+    bildiriSayisi: 0,
   };
 
   /* ---------------------------------------------------------------- */
@@ -1986,32 +1987,53 @@
   function yazarAdiCoz(ham) {
     const metin = temizAd(ham);
     if (!metin) return null;
+    if (adBellek.has(metin)) return adBellek.get(metin);
+    let kisi;
     if (metin.includes(",")) {
       const [soyad, adKismi = ""] = metin.split(",");
-      return { soyad: harfSade(soyad), adlar: harfSade(adKismi).split(" ").filter(Boolean), ham: metin };
+      kisi = { soyad: harfSade(soyad), adlar: harfSade(adKismi).split(" ").filter(Boolean), ham: metin };
+    } else {
+      const parcalar = harfSade(metin).split(" ").filter(Boolean);
+      kisi = parcalar.length < 2
+        ? { soyad: parcalar[0] || "", adlar: [], ham: metin }
+        : { soyad: parcalar[parcalar.length - 1], adlar: parcalar.slice(0, -1), ham: metin };
     }
-    const parcalar = harfSade(metin).split(" ").filter(Boolean);
-    if (parcalar.length < 2) return { soyad: parcalar[0] || "", adlar: [], ham: metin };
-    return { soyad: parcalar[parcalar.length - 1], adlar: parcalar.slice(0, -1), ham: metin };
+    kisi.tokenlar = [kisi.soyad, ...kisi.adlar].join(" ").split(" ").filter(Boolean);
+    kisi.fsoyad = fonetik(kisi.soyad);
+    kisi.fadlar = kisi.adlar.map(fonetik).filter(Boolean);
+    kisi.ftokenlar = kisi.tokenlar.map(fonetik).filter(Boolean);
+    kisi.ySirali = yDuzelt(kisi.tokenlar.slice().sort().join(" "));
+    adBellek.set(metin, kisi);
+    return kisi;
   }
+
+  const adBellek = new Map();
 
   /** WoS Türkçe harfleri bozabiliyor (ı→y); karşılaştırmada son çare olarak kullanılır. */
   const yDuzelt = (metin) => metin.replace(/y/g, "i");
 
-  const adTokenlari = (kisi) => [kisi.soyad, ...kisi.adlar].join(" ").split(" ").filter(Boolean);
+  const adTokenlari = (kisi) => kisi.tokenlar
+    || [kisi.soyad, ...kisi.adlar].join(" ").split(" ").filter(Boolean);
 
-  function adlarUyuyor(adlarA, adlarB) {
-    if (!adlarA.length || !adlarB.length) return true;
-    for (const a of adlarA) {
-      for (const b of adlarB) {
-        if (a === b) return true;
-        if (a.length === 1 && b.startsWith(a)) return true;
-        if (b.length === 1 && a.startsWith(b)) return true;
-        if (a.length <= 3 && b.length > 1 && a.split("").every((h, i) => (adlarB[i] || "").startsWith(h))) return true;
-        if (b.length <= 3 && a.length > 1 && b.split("").every((h, i) => (adlarA[i] || "").startsWith(h))) return true;
-      }
+  /**
+   * Ad(lar) uyumu. Bir taraf yalnızca baş harflerden oluşuyorsa baş harf dizisi
+   * karşılaştırılır ("Kilic, H. H." ↔ "Hasan Hüseyin"); iki tarafta da açık ad
+   * varsa kısa listenin her adı karşı tarafta bulunmalıdır, böylece
+   * "Ali Murat" ile "Muhammed Ali" gibi farklı kişiler birleşmez.
+   */
+  function adlarUyuyor(adlarA, adlarB, kati = false) {
+    if (!adlarA.length || !adlarB.length) return true;   // tek isim: soyada güvenilir
+    const uzun = (liste) => liste.filter((t) => t.length > 1);
+    const basHarfler = (liste) => liste.map((t) => t[0]).join("");
+    const uA = uzun(adlarA), uB = uzun(adlarB);
+    if (!uA.length || !uB.length) {
+      const a = basHarfler(adlarA), b = basHarfler(adlarB);
+      return a.startsWith(b) || b.startsWith(a);
     }
-    return false;
+    const [kucuk, buyuk] = uA.length <= uB.length ? [uA, uB] : [uB, uA];
+    return kucuk.every((t) => buyuk.some((d) => t === d
+      || (!kati && birHarfFarki(t, d))
+      || (t.length >= 4 && d.startsWith(t)) || (d.length >= 4 && t.startsWith(d))));
   }
 
   /** Birleşik soyadlar: "Alan, Alev Kocak" ↔ "ALEV | KOÇAK ALAN" gibi yazımları eşler. */
@@ -2039,17 +2061,54 @@
     return fark <= 1;
   }
 
+  /**
+   * Aynı adın İngilizce ve Türkçe yazımını tek anahtarda toplar:
+   * "Shahram Minaei" ↔ "ŞAHRAM MİNAYİ", "Ghodrat" ↔ "Kudret" gibi yazımlar.
+   * Digraflar sadeleşir (sh→s, ch→c, gh→g …), y sesli sayılır ve ardışık
+   * seslilerle tekrar eden harfler tek harfe iner.
+   */
+  const fonetikBellek = new Map();
+
+  function fonetik(metin) {
+    if (fonetikBellek.has(metin)) return fonetikBellek.get(metin);
+    const sonuc = fonetikHesapla(metin);
+    fonetikBellek.set(metin, sonuc);
+    return sonuc;
+  }
+
+  function fonetikHesapla(metin) {
+    let s = harfSade(metin).replace(/[^a-z ]/g, "");
+    if (!s) return "";
+    s = s.replace(/sch/g, "s").replace(/sh/g, "s").replace(/ch/g, "c")
+      .replace(/gh/g, "g").replace(/kh/g, "h").replace(/ph/g, "f")
+      .replace(/th/g, "t").replace(/ck/g, "k")
+      .replace(/q/g, "k").replace(/w/g, "v").replace(/x/g, "ks").replace(/j/g, "c")
+      .replace(/y/g, "i")
+      .replace(/(.)\1+/g, "$1")
+      .replace(/[aeiou]{2,}/g, (esles) => esles[0]);
+    return s;
+  }
+
+  const fonetikListe = (adlar) => adlar.map(fonetik).filter(Boolean);
+
   /** Soyad + ad/baş harf, birleşik soyad ve yazım bozulmalarını dikkate alır. */
   function adEslesiyorMu(yazar, kisi) {
     if (!yazar || !kisi) return false;
     if (yazar.soyad === kisi.soyad && adlarUyuyor(yazar.adlar, kisi.adlar)) return true;
     const a = adTokenlari(yazar), b = adTokenlari(kisi);
     if (tokenUyumu(a, b)) return true;
-    const ya = yDuzelt(a.slice().sort().join(" ")), yb = yDuzelt(b.slice().sort().join(" "));
+    const ya = yazar.ySirali ?? yDuzelt(a.slice().sort().join(" "));
+    const yb = kisi.ySirali ?? yDuzelt(b.slice().sort().join(" "));
     if (ya === yb) return true;
     const sa = yDuzelt(`${yazar.soyad} ${yazar.adlar[0] || ""}`.trim());
     const sb = yDuzelt(`${kisi.soyad} ${kisi.adlar[0] || ""}`.trim());
     if (sa.length >= 9 && birHarfFarki(sa, sb)) return true;
+    // Türkçe/İngilizce yazım farkı: soyad fonetik olarak aynıysa ad da uymalı.
+    const fa = yazar.fsoyad ?? fonetik(yazar.soyad), fb = kisi.fsoyad ?? fonetik(kisi.soyad);
+    if (fa && fa.length >= 3 && fa === fb
+      && adlarUyuyor(yazar.fadlar ?? fonetikListe(yazar.adlar),
+        kisi.fadlar ?? fonetikListe(kisi.adlar), true)) return true;
+    if (tokenUyumu(yazar.ftokenlar ?? fonetikListe(a), kisi.ftokenlar ?? fonetikListe(b))) return true;
     return false;
   }
 
@@ -2181,6 +2240,7 @@
         basimYili: Number(yayinYil || 0),
         erkenYil: Number(erkenYil || 0),
         belgeTuru: belge.split(";")[0].trim(),
+        belgeTuruHam: belge,
         erkenErisim: /early access/i.test(belge),
         indeksler: indeksleriCoz(al(satir, "indeks")),
         oa: al(satir, "oa"),
@@ -2304,7 +2364,16 @@
     return metin || "Belirtilmemiş";
   };
 
-  const personelDizini = () => durum.personel.map((kisi) => ({
+  let personelBellek = null;
+
+  const personelDizini = () => {
+    if (personelBellek && personelBellek.kaynak === durum.personel) return personelBellek.liste;
+    const liste = personelListesi();
+    personelBellek = { kaynak: durum.personel, liste };
+    return liste;
+  };
+
+  const personelListesi = () => durum.personel.map((kisi) => ({
     ...kisi,
     anahtar: yazarAdiCoz(`${kisi.soyad}, ${kisi.ad}`),
     unvan: unvanSadele(kisi.unvan),
@@ -2314,19 +2383,77 @@
 
   const adjunctDizini = () => durum.adjunct.map((ad) => yazarAdiCoz(ad)).filter(Boolean);
 
-  /** Kayıtlara kişi eşleşmesi ve adjunct bilgisi ekler. */
+  /**
+   * Bildiriler (proceedings paper) yayın analizine girmez; sayıları yalnızca
+   * bilgi amaçlı olarak durum.bildiriSayisi'nda tutulur.
+   */
+  const bildiriMi = (kayit) => /proceedings\s*paper|bildiri/i
+    .test(`${kayit.belgeTuruHam || ""} ${kayit.belgeTuru || ""}`);
+
+  /**
+   * Soyadın fonetik karşılığına göre aday personel kovaları: her yazar için
+   * 500+ kişilik listeyi taramak yerine yalnızca adayları denemek gerekir.
+   */
+  function adayDizini(kisiler) {
+    const kovalar = new Map();
+    const ekle = (anahtar, kisi) => {
+      if (!anahtar) return;
+      if (!kovalar.has(anahtar)) kovalar.set(anahtar, []);
+      const kova = kovalar.get(anahtar);
+      if (!kova.includes(kisi)) kova.push(kisi);
+    };
+    for (const kisi of kisiler) {
+      const a = kisi.anahtar;
+      if (!a) continue;
+      ekle(a.soyad, kisi);
+      ekle(a.fsoyad, kisi);
+      for (const token of a.ftokenlar || []) ekle(token, kisi);
+    }
+    return {
+      adaylar(yazar) {
+        const kume = new Set();
+        for (const anahtar of [yazar.soyad, yazar.fsoyad, ...(yazar.ftokenlar || [])]) {
+          for (const kisi of kovalar.get(anahtar) || []) kume.add(kisi);
+        }
+        return [...kume];
+      },
+    };
+  }
+
+  /** Önce aday kovaları, sonuç yoksa tam tarama (bir harf farkı gibi durumlar için). */
+  function kisiBul(yazar, kisiler, dizin) {
+    for (const kisi of dizin.adaylar(yazar)) if (adEslesiyorMu(yazar, kisi.anahtar)) return kisi;
+    return kisiler.find((kisi) => adEslesiyorMu(yazar, kisi.anahtar)) || null;
+  }
+
+  let zenginBellek = null;
+
+  const veriImzasi = () => [...durum.yillar.entries()]
+    .map(([anahtar, yil]) => `${anahtar}:${(yil.kayitlar || []).length}:${yil.yuklenme || ""}`).join("|")
+    + `#${durum.personel.length}#${durum.adjunct.join(",")}`
+    + `#${[...durum.quartiller.keys()].sort().join(",")}`;
+
+  /** Kayıtlara kişi eşleşmesi ve adjunct bilgisi ekler (sonuç önbelleklenir). */
   function zenginlestir() {
+    const imza = veriImzasi();
+    if (zenginBellek && zenginBellek.imza === imza) {
+      durum.bildiriSayisi = zenginBellek.bildiri;
+      return zenginBellek.liste;
+    }
     const kisiler = personelDizini();
     const adjunctlar = adjunctDizini();
+    const dizin = adayDizini(kisiler);
     const hepsi = [];
+    let bildiri = 0;
     for (const yil of durum.yillar.values()) {
       for (const kayit of yil.kayitlar) {
+        if (bildiriMi(kayit)) { bildiri += 1; continue; }
         const yazarlar = (kayit.kurumYazarlari || []).map(yazarAdiCoz).filter(Boolean);
         const eslesen = [];
         let adjunctVar = false;
         for (const yazar of yazarlar) {
           if (adjunctlar.some((a) => adEslesiyorMu(yazar, a))) { adjunctVar = true; continue; }
-          const kisi = kisiler.find((k) => adEslesiyorMu(yazar, k.anahtar));
+          const kisi = kisiBul(yazar, kisiler, dizin);
           if (kisi) eslesen.push(kisi);
         }
         const q = kayitQuartile(kayit);
@@ -2334,6 +2461,8 @@
           oaVar: Boolean((kayit.oa || "").trim()) });
       }
     }
+    durum.bildiriSayisi = bildiri;
+    zenginBellek = { imza, liste: hepsi, bildiri };
     return hepsi;
   }
 
@@ -2459,6 +2588,8 @@
       const eslesen = liste.filter((k) => k.eslesen.length).length;
       const personel = personelSayisi(senaryo);
       return { yayin: liste.length, personel, oa, eslesen,
+        atif: liste.reduce((t, k) => t + (k.atif || 0), 0),
+        h: hIndeksi(liste.map((k) => k.atif || 0)),
         kisiBasi: personel ? liste.length / personel : 0 };
     };
     const A = sayimlar(a, "A"), B = sayimlar(b, "B");
@@ -2471,6 +2602,10 @@
       ["Açık erişimli yayın", A.oa, B.oa, B.oa - A.oa],
       ["Açık erişim oranı", yuzde(A.oa, A.yayin), yuzde(B.oa, B.yayin), ""],
       ["Personel listesiyle eşleşen yayın", A.eslesen, B.eslesen, B.eslesen - A.eslesen],
+      ["Toplam atıf", A.atif, B.atif, B.atif - A.atif],
+      ["Atıf / yayın", (A.yayin ? A.atif / A.yayin : 0).toFixed(2).replace(".", ","),
+        (B.yayin ? B.atif / B.yayin : 0).toFixed(2).replace(".", ","), ""],
+      ["h indeksi", A.h, B.h, B.h - A.h],
     ];
     for (const [ad] of INDEKS_ADLARI) {
       const sa = indeksSay(a, ad), sb = indeksSay(b, ad);
@@ -2479,7 +2614,9 @@
     kTablo({ basliklar: ["Gösterge", "A: adjunct dahil", "B: hariç", "Değişim"], satirlar, genisIlk: 260 });
     $("kGorunumNotu").textContent = "Personel sayısı: çıkış tarihi boş olan akademik personel "
       + "(A senaryosunda adjunct isimler eklenir). Yayın sayıları benzersiz kayıttır; "
-      + "kişi bazlı tablolarda her yayın, yayındaki her kurum yazarı için ayrı sayılır.";
+      + "kişi bazlı tablolarda her yayın, yayındaki her kurum yazarı için ayrı sayılır. "
+      + "Bildiriler (proceedings paper) analiz dışıdır. "
+      + "Atıf ve h indeksi WoS \"Times Cited\" sütunundan hesaplanır.";
   }
 
   /** Adjunct kadrosu ve yayınları A senaryosunda bu birime sayılır. */
@@ -2599,8 +2736,9 @@
     const kisiler = personelDizini();
     const adjunctlar = adjunctDizini();
     const gruplar = [];
+    const dizin = adayDizini(kisiler);
     const bul = (yazar) => {
-      const kisi = kisiler.find((k) => adEslesiyorMu(yazar, k.anahtar));
+      const kisi = kisiBul(yazar, kisiler, dizin);
       if (kisi) {
         const anahtar = `p:${sade(kisi.ad)} ${sade(kisi.soyad)}`;
         return { anahtar, ad: `${kisi.ad} ${kisi.soyad}`, durum: kisi.cikis ? "Ayrılmış personel" : "Personel",
@@ -2624,7 +2762,8 @@
         const bilgi = bul(yazar);
         let grup = gruplar.find((g) => g.anahtar === bilgi.anahtar);
         if (!grup) {
-          grup = { ...bilgi, yazarlar: [], yazimlar: new Set(), yayin: 0, oa: 0, q1: 0, yillar: {} };
+          grup = { ...bilgi, yazarlar: [], yazimlar: new Set(), yayin: 0, oa: 0, q1: 0, yillar: {},
+            atif: 0, atiflar: [] };
           gruplar.push(grup);
         }
         grup.yazarlar.push(yazar);
@@ -2634,10 +2773,21 @@
         grup.yayin += 1;
         if (kayit.oaVar) grup.oa += 1;
         if (kayit.q === "Q1") grup.q1 += 1;
+        grup.atif += kayit.atif || 0;
+        grup.atiflar.push(kayit.atif || 0);
         grup.yillar[kayit.yil] = (grup.yillar[kayit.yil] || 0) + 1;
       }
     }
+    for (const grup of gruplar) grup.h = hIndeksi(grup.atiflar);
     return gruplar;
+  }
+
+  /** Atıf sayılarından h indeksi: h yayının her biri en az h atıf almışsa h. */
+  function hIndeksi(atiflar) {
+    const sirali = [...atiflar].sort((a, b) => b - a);
+    let h = 0;
+    while (h < sirali.length && sirali[h] >= h + 1) h += 1;
+    return h;
   }
 
   function kisiCiz() {
@@ -2645,11 +2795,16 @@
     const gruplar = yazarGruplari(kayitlar).sort((a, b) => b.yayin - a.yayin
       || a.ad.localeCompare(b.ad, "tr"));
     const yillar = [...new Set(kayitlar.map((k) => k.yil))].filter(Boolean).sort();
-    const basliklar = ["Kişi", "Durum", "Unvan", "Fakülte", ...yillar.map(String), "Yayın", "Açık erişim"];
+    const basliklar = ["Kişi", "Durum", "Unvan", "Fakülte", ...yillar.map(String), "Yayın",
+      "Açık erişim", "Atıf", "Atıf/yayın", "h"];
     const satirlar = gruplar.map((g) => [g.ad, g.durum, g.unvan, g.fakulte,
-      ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa]);
+      ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa, g.atif,
+      g.yayin ? (g.atif / g.yayin).toFixed(1).replace(".", ",") : "·", g.h]);
+    const toplamAtif = kayitlar.reduce((t, k) => t + (k.atif || 0), 0);
     const toplam = ["Toplam", "", "", "", ...yillar.map((y) => kayitlar.filter((k) => k.yil === y).length),
-      kayitlar.length, kayitlar.filter((k) => k.oaVar).length];
+      kayitlar.length, kayitlar.filter((k) => k.oaVar).length, toplamAtif,
+      kayitlar.length ? (toplamAtif / kayitlar.length).toFixed(1).replace(".", ",") : "·",
+      hIndeksi(kayitlar.map((k) => k.atif || 0))];
     kTablo({ basliklar, satirlar, toplam, genisIlk: 230, metinSutunlari: [1, 2, 3] });
 
     const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
@@ -2665,7 +2820,10 @@
       + `${personelli.filter((g) => g.durum === "Personel").length} kişi bu dönemde yayın yapmış. `
       + `En üretken 10 yazar toplam eşleşmelerin ${yuzde(ilk(10), toplamEslesme)} kadarını, `
       + `ilk 20 yazar ${yuzde(ilk(20), toplamEslesme)} kadarını karşılıyor. `
-      + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır.";
+      + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır. "
+      + "Atıf ve h indeksi, WoS \"Times Cited\" sütunundan ve yalnızca bu dosyalardaki "
+      + "kurum adresli yayınlardan hesaplanır; kişinin kurum dışı yayınlarını içermez. "
+      + "Toplam satırındaki h, kurumun bu yayın kümesi için h indeksidir.";
   }
 
   function yilCiz() {
@@ -2731,6 +2889,8 @@
       [personel ? (secili.length / personel).toFixed(2).replace(".", ",") : "·", "yayın / kişi", ""],
       [yuzde(oa, secili.length).replace("%", ""), "açık erişim %", ""],
       [yuzde(q1, siniflanan).replace("%", ""), "Q1 payı %", ""],
+      [bicim(secili.reduce((t, k) => t + (k.atif || 0), 0)), "atıf", ""],
+      [String(hIndeksi(secili.map((k) => k.atif || 0))), "h indeksi", ""],
       [String(a.filter((k) => k.adjunctVar).length), "adjunct yayını", a.length ? "uyari" : ""],
     ];
     const kap = $("kKutular");
@@ -2749,6 +2909,7 @@
     $("kAltBaslik").textContent = durum.yillar.size
       ? `${yillar[0]}–${yillar[yillar.length - 1]} · ${zenginlestir().length} kayıt · `
         + `${durum.personel.length} personel satırı · ${durum.adjunct.length} adjunct adı`
+        + (durum.bildiriSayisi ? ` · ${durum.bildiriSayisi} bildiri analiz dışı` : "")
         + (durum.quartiller.size
           ? ` · çeyreklik listeleri: ${[...durum.quartiller.keys()].sort().join(", ")}`
           : " · çeyreklik verisi yok")
