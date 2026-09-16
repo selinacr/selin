@@ -2773,7 +2773,6 @@
       const personel = personelSayisi(senaryo);
       return { yayin: liste.length, personel, oa, eslesen,
         atif: liste.reduce((t, k) => t + (k.atif || 0), 0),
-        h: hIndeksi(liste.map((k) => k.atif || 0)),
         kisiBasi: personel ? liste.length / personel : 0 };
     };
     const A = sayimlar(a, "A"), B = sayimlar(b, "B");
@@ -2789,7 +2788,6 @@
       ["Toplam atıf", A.atif, B.atif, B.atif - A.atif],
       ["Atıf / yayın", (A.yayin ? A.atif / A.yayin : 0).toFixed(2).replace(".", ","),
         (B.yayin ? B.atif / B.yayin : 0).toFixed(2).replace(".", ","), ""],
-      ["h indeksi (yüklü yayınlar üzerinden)", A.h, B.h, B.h - A.h],
     ];
     for (const [ad] of INDEKS_ADLARI) {
       const sa = indeksSay(a, ad), sb = indeksSay(b, ad);
@@ -2800,7 +2798,7 @@
       + "(A senaryosunda adjunct isimler eklenir). Yayın sayıları benzersiz kayıttır; "
       + "kişi bazlı tablolarda her yayın, yayındaki her kurum yazarı için ayrı sayılır. "
       + "Bildiriler (proceedings paper) analiz dışıdır. "
-      + "Atıf ve h indeksi WoS \"Times Cited\" sütunundan hesaplanır.";
+      + "Atıf, WoS \"Times Cited, All Databases\" sütunundan gelir.";
   }
 
   /** Adjunct kadrosu ve yayınları A senaryosunda bu birime sayılır. */
@@ -2947,7 +2945,7 @@
         let grup = gruplar.find((g) => g.anahtar === bilgi.anahtar);
         if (!grup) {
           grup = { ...bilgi, yazarlar: [], yazimlar: new Set(), yayin: 0, oa: 0, q1: 0, yillar: {},
-            atif: 0, atiflar: [] };
+            atif: 0 };
           gruplar.push(grup);
         }
         grup.yazarlar.push(yazar);
@@ -2958,20 +2956,10 @@
         if (kayit.oaVar) grup.oa += 1;
         if (kayit.q === "Q1") grup.q1 += 1;
         grup.atif += kayit.atif || 0;
-        grup.atiflar.push(kayit.atif || 0);
         grup.yillar[kayit.yil] = (grup.yillar[kayit.yil] || 0) + 1;
       }
     }
-    for (const grup of gruplar) grup.h = hIndeksi(grup.atiflar);
     return gruplar;
-  }
-
-  /** Atıf sayılarından h indeksi: h yayının her biri en az h atıf almışsa h. */
-  function hIndeksi(atiflar) {
-    const sirali = [...atiflar].sort((a, b) => b - a);
-    let h = 0;
-    while (h < sirali.length && sirali[h] >= h + 1) h += 1;
-    return h;
   }
 
   function kisiCiz() {
@@ -2979,17 +2967,15 @@
     const gruplar = yazarGruplari(kayitlar).sort((a, b) => b.yayin - a.yayin
       || a.ad.localeCompare(b.ad, "tr"));
     const yillar = [...new Set(kayitlar.map((k) => k.yil))].filter(Boolean).sort();
-    const donemAdi = yillar.length ? `${yillar[0]}–${yillar[yillar.length - 1]}` : "dönem";
     const basliklar = ["Kişi", "Durum", "Unvan", "Fakülte", ...yillar.map(String), "Yayın",
-      "Açık erişim", "Atıf", "Atıf/yayın", `h (${donemAdi})`];
+      "Açık erişim", "Atıf", "Atıf/yayın"];
     const satirlar = gruplar.map((g) => [g.ad, g.durum, g.unvan, g.fakulte,
       ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa, g.atif,
-      g.yayin ? (g.atif / g.yayin).toFixed(1).replace(".", ",") : "·", g.h]);
+      g.yayin ? (g.atif / g.yayin).toFixed(1).replace(".", ",") : "·"]);
     const toplamAtif = kayitlar.reduce((t, k) => t + (k.atif || 0), 0);
     const toplam = ["Toplam", "", "", "", ...yillar.map((y) => kayitlar.filter((k) => k.yil === y).length),
       kayitlar.length, kayitlar.filter((k) => k.oaVar).length, toplamAtif,
-      kayitlar.length ? (toplamAtif / kayitlar.length).toFixed(1).replace(".", ",") : "·",
-      hIndeksi(kayitlar.map((k) => k.atif || 0))];
+      kayitlar.length ? (toplamAtif / kayitlar.length).toFixed(1).replace(".", ",") : "·"];
     kTablo({ basliklar, satirlar, toplam, genisIlk: 230, metinSutunlari: [1, 2, 3] });
 
     const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
@@ -3006,10 +2992,8 @@
       + `En üretken 10 yazar toplam eşleşmelerin ${yuzde(ilk(10), toplamEslesme)} kadarını, `
       + `ilk 20 yazar ${yuzde(ilk(20), toplamEslesme)} kadarını karşılıyor. `
       + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır. "
-      + "Atıf, WoS \"Times Cited, All Databases\" sütunundan gelir. h sütunu yalnızca bu "
-      + "dosyalardaki kurum adresli yayınlardan hesaplanan dönem h indeksidir; yazarın "
-      + "WoS/Scopus profilinde görünen kariyer h indeksi değildir (o, kişinin tüm yılları ve "
-      + "kurum dışı yayınlarını da kapsar). Toplam satırındaki h, kurumun bu yayın kümesi içindir.";
+      + "Atıf, WoS \"Times Cited, All Databases\" sütunundan ve yalnızca bu dosyalardaki "
+      + "kurum adresli yayınlardan gelir.";
   }
 
   function yilCiz() {
@@ -3076,7 +3060,6 @@
       [yuzde(oa, secili.length).replace("%", ""), "açık erişim %", ""],
       [yuzde(q1, siniflanan).replace("%", ""), "Q1 payı %", ""],
       [bicim(secili.reduce((t, k) => t + (k.atif || 0), 0)), "atıf", ""],
-      [String(hIndeksi(secili.map((k) => k.atif || 0))), "dönem h indeksi", ""],
       [String(a.filter((k) => k.adjunctVar).length), "adjunct yayını", a.length ? "uyari" : ""],
     ];
     const kap = $("kKutular");
