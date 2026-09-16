@@ -2458,23 +2458,38 @@
       + "kişi bazlı tablolarda her yayın, yayındaki her kurum yazarı için ayrı sayılır.";
   }
 
+  /** Adjunct kadrosu ve yayınları A senaryosunda bu birime sayılır. */
+  const adjunctFakultesi = () => {
+    const adaylar = [...new Set(durum.personel.map((k) => k.fakulte))];
+    return adaylar.find((f) => /muhendis/i.test(sade(f))) || "Mühendislik Fakültesi";
+  };
+
   function fakulteCiz() {
     const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
     const kayitlar = suzulmus();
-    const fakulteler = [...new Set(kisiler.map((k) => k.fakulte))].sort((a, b) => a.localeCompare(b, "tr"));
+    const adjunctBirim = adjunctFakultesi();
+    const adjunctSayisi = durum.senaryo === "A" ? durum.adjunct.length : 0;
+    const fakulteler = [...new Set([...kisiler.map((k) => k.fakulte), adjunctBirim])]
+      .sort((a, b) => a.localeCompare(b, "tr"));
     const satirlar = fakulteler.map((fakulte) => {
-      const personel = kisiler.filter((k) => k.fakulte === fakulte).length;
-      const yayinlar = kayitlar.filter((kayit) => kayit.eslesen.some((k) => k.fakulte === fakulte));
+      const adjunctlu = fakulte === adjunctBirim;
+      const personel = kisiler.filter((k) => k.fakulte === fakulte).length + (adjunctlu ? adjunctSayisi : 0);
+      const yayinlar = kayitlar.filter((kayit) => kayit.eslesen.some((k) => k.fakulte === fakulte)
+        || (adjunctlu && durum.senaryo === "A" && kayit.adjunctVar));
       const oa = yayinlar.filter((k) => k.oaVar).length;
       return [fakulte, personel, yayinlar.length, personel ? Number((yayinlar.length / personel).toFixed(2)) : 0,
         oa, yuzde(oa, yayinlar.length)];
     }).sort((a, b) => b[3] - a[3]);
     kTablo({ basliklar: ["Fakülte / birim", "Personel", "Yayın", "Yayın/kişi", "Açık erişim", "OA oranı"],
       satirlar, genisIlk: 260 });
-    const eslesmeyen = kayitlar.filter((k) => !k.eslesen.length).length;
+    const eslesmeyen = kayitlar.filter((k) => !k.eslesen.length
+      && !(durum.senaryo === "A" && k.adjunctVar)).length;
     $("kGorunumNotu").textContent = "Ortak yazarlık nedeniyle bir yayın birden fazla fakülteye "
       + "sayılabilir; satır toplamı genel toplamı aşabilir. "
-      + `${eslesmeyen} yayın hiçbir personel kaydıyla eşleşmedi (adjunct yayınları ve ad yazım farkları).`;
+      + (durum.senaryo === "A"
+        ? `A senaryosunda ${durum.adjunct.length} adjunct ve onların yayınları ${adjunctBirim} satırına eklenir. `
+        : "B senaryosunda adjunct kadro ve yayınları tamamen çıkarılır. ")
+      + `${eslesmeyen} yayın hiçbir personel kaydıyla eşleşmedi (ayrılmış/listede olmayan yazarlar ve yazım farkları).`;
   }
 
   function indeksCiz() {
