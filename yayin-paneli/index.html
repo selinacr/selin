@@ -3109,16 +3109,24 @@
     kTablo({ basliklar: ["İndeks", ...Q_SIRASI, "Toplam"], satirlar, toplam, genisIlk: 220 });
   }
 
+  /** Açık erişim: yalnızca var/yok. Gold, green gibi alt türler ayrıştırılmaz. */
   function oaCiz() {
     const a = suzulmus("A"), b = suzulmus("B");
-    const turler = [...new Set([...a, ...b].map((k) => (k.oa || "").trim() || "OA değil"))];
-    const satirlar = turler.map((tur) => [tur,
-      a.filter((k) => ((k.oa || "").trim() || "OA değil") === tur).length,
-      b.filter((k) => ((k.oa || "").trim() || "OA değil") === tur).length,
-    ]).sort((x, y) => y[1] - x[1]);
-    const toplam = ["Toplam", a.length, b.length];
-    kTablo({ basliklar: ["Açık erişim türü", "A", "B"], satirlar, toplam, genisIlk: 300 });
-    $("kGorunumNotu").textContent = `Açık erişim oranı — A: ${yuzde(a.filter((k) => k.oaVar).length, a.length)}, `
+    const yillar = [...new Set([...a, ...b].map((k) => k.yil))].filter(Boolean).sort();
+    const satir = (ad, kayitlarA, kayitlarB) => {
+      const oaA = kayitlarA.filter((k) => k.oaVar).length;
+      const oaB = kayitlarB.filter((k) => k.oaVar).length;
+      return [ad, kayitlarA.length, oaA, yuzde(oaA, kayitlarA.length),
+        kayitlarB.length, oaB, yuzde(oaB, kayitlarB.length)];
+    };
+    const satirlar = yillar.map((yil) => satir(String(yil),
+      a.filter((k) => k.yil === yil), b.filter((k) => k.yil === yil)));
+    const toplam = satir("Toplam", a, b);
+    kTablo({ basliklar: ["Yıl", "A: yayın", "A: açık erişim", "A: oran",
+      "B: yayın", "B: açık erişim", "B: oran"], satirlar, toplam, genisIlk: 120 });
+    $("kGorunumNotu").textContent = "Açık erişim, yayının herhangi bir açık erişim "
+      + "kaydı olup olmamasına göre sayılır (gold, green, hybrid ayrımı yapılmaz). "
+      + `Genel oran — A: ${yuzde(a.filter((k) => k.oaVar).length, a.length)}, `
       + `B: ${yuzde(b.filter((k) => k.oaVar).length, b.length)}.`;
   }
 
