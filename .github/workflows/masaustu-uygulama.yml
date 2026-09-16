@@ -1,0 +1,31 @@
+name: Masaüstü uygulaması (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths:
+      - "yayin-paneli-masaustu/**"
+      - ".github/workflows/masaustu-uygulama.yml"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: yayin-paneli-masaustu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npx electron-builder --win portable nsis
+        env:
+          GH_TOKEN: ""
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YayinPaneli-windows
+          path: |
+            yayin-paneli-masaustu/dist/*.exe
+          if-no-files-found: error

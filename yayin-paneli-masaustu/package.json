@@ -1,0 +1,35 @@
+{
+  "name": "yayin-paneli-masaustu",
+  "productName": "Yayın Paneli",
+  "version": "1.0.0",
+  "description": "Doğuş Üniversitesi kurum/adjunct yayın panelini kendi penceresinde açan masaüstü uygulaması",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable nsis"
+  },
+  "author": "ARDES",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.5"
+  },
+  "build": {
+    "appId": "edu.dogus.ardes.yayinpaneli",
+    "productName": "Yayin Paneli",
+    "files": ["main.js", "package.json"],
+    "win": {
+      "target": ["portable", "nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Yayin Paneli"
+    },
+    "portable": {
+      "artifactName": "YayinPaneli-tasinabilir-${version}.exe"
+    }
+  }
+}
