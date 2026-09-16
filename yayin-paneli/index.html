@@ -2547,31 +2547,78 @@
     kTablo({ basliklar: ["Unvan", "Kişi", "Yayın (A)", "Yayın (B)", "Yayın/kişi (A)"], satirlar, genisIlk: 240 });
   }
 
-  function kisiCiz() {
-    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
-    const kayitlar = suzulmus();
-    const sayimlar = new Map();
+  /** Kurum adresli bütün yazarlar: personelle eşleşen, adjunct ve listede olmayanlar. */
+  function yazarGruplari(kayitlar) {
+    const kisiler = personelDizini();
+    const adjunctlar = adjunctDizini();
+    const gruplar = [];
+    const bul = (yazar) => {
+      const kisi = kisiler.find((k) => adEslesiyorMu(yazar, k.anahtar));
+      if (kisi) {
+        const anahtar = `p:${sade(kisi.ad)} ${sade(kisi.soyad)}`;
+        return { anahtar, ad: `${kisi.ad} ${kisi.soyad}`, durum: kisi.cikis ? "Ayrılmış personel" : "Personel",
+          unvan: kisi.unvan, fakulte: kisi.fakulte };
+      }
+      const adjunct = adjunctlar.find((a) => adEslesiyorMu(yazar, a));
+      if (adjunct) return { anahtar: `a:${sade(adjunct.ham)}`, ad: adjunct.ham, durum: "Adjunct",
+        unvan: "—", fakulte: "—" };
+      // Listede yok: aynı kişinin farklı yazımlarını birleştir
+      const mevcut = gruplar.find((g) => g.durum === "Listede yok"
+        && g.yazarlar.some((y) => adEslesiyorMu(yazar, y)));
+      if (mevcut) return { anahtar: mevcut.anahtar };
+      return { anahtar: `x:${yazar.soyad} ${yazar.adlar.join(" ")}`, ad: yazar.ham,
+        durum: "Listede yok", unvan: "—", fakulte: "—" };
+    };
     for (const kayit of kayitlar) {
-      for (const kisi of kayit.eslesen) {
-        const anahtar = `${kisi.ad} ${kisi.soyad}`;
-        if (!sayimlar.has(anahtar)) sayimlar.set(anahtar, { kisi, yayin: 0, oa: 0, q1: 0 });
-        const veri = sayimlar.get(anahtar);
-        veri.yayin += 1;
-        if (kayit.oaVar) veri.oa += 1;
-        if (kayit.q === "Q1") veri.q1 += 1;
+      const gorulen = new Set();
+      for (const ham of kayit.kurumYazarlari || []) {
+        const yazar = yazarAdiCoz(ham);
+        if (!yazar || !yazar.soyad) continue;
+        const bilgi = bul(yazar);
+        let grup = gruplar.find((g) => g.anahtar === bilgi.anahtar);
+        if (!grup) {
+          grup = { ...bilgi, yazarlar: [], yazimlar: new Set(), yayin: 0, oa: 0, q1: 0, yillar: {} };
+          gruplar.push(grup);
+        }
+        grup.yazarlar.push(yazar);
+        grup.yazimlar.add(temizAd(ham));
+        if (gorulen.has(grup.anahtar)) continue;    // aynı kayıtta iki kez sayma
+        gorulen.add(grup.anahtar);
+        grup.yayin += 1;
+        if (kayit.oaVar) grup.oa += 1;
+        if (kayit.q === "Q1") grup.q1 += 1;
+        grup.yillar[kayit.yil] = (grup.yillar[kayit.yil] || 0) + 1;
       }
     }
-    const satirlar = [...sayimlar.entries()]
-      .map(([ad, v]) => [ad, v.kisi.unvan, v.kisi.fakulte, v.yayin, v.q1, v.oa])
-      .sort((x, y) => y[3] - x[3]);
-    const toplamEslesme = satirlar.reduce((t, s) => t + s[3], 0);
-    const ilk = (n) => satirlar.slice(0, n).reduce((t, s) => t + s[3], 0);
-    kTablo({ basliklar: ["Kişi", "Unvan", "Fakülte", "Yayın", "Q1", "Açık erişim"], satirlar,
-      genisIlk: 220, metinSutunlari: [1, 2] });
-    $("kGorunumNotu").textContent = `${kisiler.length} akademik personelin ${satirlar.length}'i `
-      + `(${yuzde(satirlar.length, kisiler.length)}) en az bir yayına sahip. `
-      + `En üretken 10 kişi eşleşmelerin ${yuzde(ilk(10), toplamEslesme)}'ini, ilk 20 kişi `
-      + `${yuzde(ilk(20), toplamEslesme)}'ini karşılıyor.`;
+    return gruplar;
+  }
+
+  function kisiCiz() {
+    const kayitlar = suzulmus();
+    const gruplar = yazarGruplari(kayitlar).sort((a, b) => b.yayin - a.yayin
+      || a.ad.localeCompare(b.ad, "tr"));
+    const yillar = [...new Set(kayitlar.map((k) => k.yil))].filter(Boolean).sort();
+    const basliklar = ["Kişi", "Durum", "Unvan", "Fakülte", ...yillar.map(String), "Yayın", "Açık erişim"];
+    const satirlar = gruplar.map((g) => [g.ad, g.durum, g.unvan, g.fakulte,
+      ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa]);
+    const toplam = ["Toplam", "", "", "", ...yillar.map((y) => kayitlar.filter((k) => k.yil === y).length),
+      kayitlar.length, kayitlar.filter((k) => k.oaVar).length];
+    kTablo({ basliklar, satirlar, toplam, genisIlk: 230, metinSutunlari: [1, 2, 3] });
+
+    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    const personelli = gruplar.filter((g) => g.durum.includes("Personel"));
+    const eksik = gruplar.filter((g) => g.durum === "Listede yok");
+    const toplamEslesme = gruplar.reduce((t, g) => t + g.yayin, 0);
+    const ilk = (n) => gruplar.slice(0, n).reduce((t, g) => t + g.yayin, 0);
+    $("kGorunumNotu").textContent = `${gruplar.length} farklı kurum adresli yazar: `
+      + `${personelli.length} personel listesinde, ${gruplar.filter((g) => g.durum === "Adjunct").length} adjunct, `
+      + `${eksik.length} listede yok (ayrılmış ya da emekli olabilir — `
+      + `${eksik.reduce((t, g) => t + g.yayin, 0)} yayın). `
+      + `Aktif akademik personel ${kisiler.length} kişi; bunlardan `
+      + `${personelli.filter((g) => g.durum === "Personel").length} kişi bu dönemde yayın yapmış. `
+      + `En üretken 10 yazar toplam eşleşmelerin ${yuzde(ilk(10), toplamEslesme)} kadarını, `
+      + `ilk 20 yazar ${yuzde(ilk(20), toplamEslesme)} kadarını karşılıyor. `
+      + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır.";
   }
 
   function yilCiz() {
