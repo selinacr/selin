@@ -1,4 +1,4 @@
-<title>Adjunct Yayın Paneli</title>
+<title>Kurum/Adjunct Yayın Paneli</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap">
@@ -1966,7 +1966,7 @@
     yillar: new Map(),          // "2026" -> {yil, dosya, yuklenme, kayitlar[]}
     personel: [],               // {ad, soyad, unvan, fakulte, birim, aktif}
     adjunct: [],                // adjunct/dış bağlantılı isimler
-    quartiller: new Map(),      // ISSN -> "Q1".."Q4"
+    quartiller: new Map(),      // yıl -> Map(ISSN -> "Q1".."Q4")
     db: null,
     senaryo: "A",
     yil: "tumu",
@@ -2337,14 +2337,38 @@
     return hepsi;
   }
 
+  /** O yıla ait çeyreklik listesi; yoksa en yakın önceki yılın listesi kullanılır. */
+  function quartileHaritasi(yil) {
+    if (!durum.quartiller.size) return null;
+    const anahtar = String(yil);
+    if (durum.quartiller.has(anahtar)) return durum.quartiller.get(anahtar);
+    const yillar = [...durum.quartiller.keys()].map(Number).sort((a, b) => a - b);
+    const oncekiler = yillar.filter((y) => y <= yil);
+    const secilen = oncekiler.length ? oncekiler[oncekiler.length - 1] : yillar[0];
+    return durum.quartiller.get(String(secilen));
+  }
+
+  /** Bir kayıt için hangi yılın listesinin kullanıldığını söyler (not metni için). */
+  function quartileYili(yil) {
+    if (!durum.quartiller.size) return null;
+    const anahtar = String(yil);
+    if (durum.quartiller.has(anahtar)) return yil;
+    const yillar = [...durum.quartiller.keys()].map(Number).sort((a, b) => a - b);
+    const oncekiler = yillar.filter((y) => y <= yil);
+    return oncekiler.length ? oncekiler[oncekiler.length - 1] : yillar[0];
+  }
+
   function kayitQuartile(kayit) {
     if (/proceedings|bildiri/i.test(kayit.belgeTuru || "") || (kayit.indeksler || []).some((i) => /CPCI/.test(i))) {
       return "Bildiri";
     }
     const hamQ = String(kayit.quartileHam || "").toUpperCase().match(/Q[1-4]/);
     if (hamQ) return hamQ[0];
-    for (const issn of [kayit.issn, kayit.eissn]) {
-      if (issn && durum.quartiller.has(issn)) return durum.quartiller.get(issn);
+    const harita = quartileHaritasi(kayit.yil);
+    if (harita) {
+      for (const issn of [kayit.issn, kayit.eissn]) {
+        if (issn && harita.has(issn)) return harita.get(issn);
+      }
     }
     return "Sınıflandırılamayan";
   }
@@ -2520,6 +2544,14 @@
       + `B: ${yuzde(say(b, "Q1") + say(b, "Q2"), siniflanan(b))}.`);
     if (!durum.quartiller.size && !a.some((k) => k.quartileHam)) {
       notlar.push("Çeyreklik verisi yok: WoS dışa aktarımında JIF Quartile sütunu yoksa SCImago SJR dosyasını yükle.");
+    } else if (durum.quartiller.size) {
+      const kullanilan = [...new Set(a.map((k) => `${k.yil} → ${quartileYili(k.yil)}`))].sort();
+      notlar.push(`Çeyreklikler ISSN/eISSN üzerinden SJR listeleriyle eşleştirildi (yayın yılı → liste yılı: `
+        + `${kullanilan.join(", ")}).`);
+      const siniflanamayan = a.filter((k) => k.q === "Sınıflandırılamayan").length;
+      if (siniflanamayan) {
+        notlar.push(`${siniflanamayan} yayının dergisi listede bulunamadı (çoğunlukla Scopus'ta taranmayan dergiler).`);
+      }
     }
     $("kGorunumNotu").textContent = notlar.join(" ");
   }
@@ -2717,7 +2749,9 @@
     $("kAltBaslik").textContent = durum.yillar.size
       ? `${yillar[0]}–${yillar[yillar.length - 1]} · ${zenginlestir().length} kayıt · `
         + `${durum.personel.length} personel satırı · ${durum.adjunct.length} adjunct adı`
-        + (durum.quartiller.size ? ` · ${bicim(durum.quartiller.size)} dergi çeyrekliği` : " · çeyreklik verisi yok")
+        + (durum.quartiller.size
+          ? ` · çeyreklik listeleri: ${[...durum.quartiller.keys()].sort().join(", ")}`
+          : " · çeyreklik verisi yok")
       : "WoS dışa aktarımını ve personel listesini yükle.";
   }
 
@@ -2795,7 +2829,8 @@
     durum.yillar = new Map(Object.entries(oku(KY.yillar, "{}")));
     durum.personel = oku(KY.personel, "[]");
     durum.adjunct = oku(KY.adjunct, "[]");
-    durum.quartiller = new Map(Object.entries(oku(KY.q, "{}")));
+    durum.quartiller = new Map(Object.entries(oku(KY.q, "{}"))
+      .map(([yil, esleme]) => [yil, new Map(Object.entries(esleme))]));
   }
 
   function yereleYaz() {
@@ -2803,7 +2838,8 @@
       localStorage.setItem(KY.yillar, JSON.stringify(Object.fromEntries(durum.yillar)));
       localStorage.setItem(KY.personel, JSON.stringify(durum.personel));
       localStorage.setItem(KY.adjunct, JSON.stringify(durum.adjunct));
-      localStorage.setItem(KY.q, JSON.stringify(Object.fromEntries(durum.quartiller)));
+      localStorage.setItem(KY.q, JSON.stringify(Object.fromEntries(
+        [...durum.quartiller].map(([yil, esleme]) => [yil, Object.fromEntries(esleme)]))));
     } catch { /* depo dolu olabilir */ }
   }
 
@@ -2829,15 +2865,23 @@
       durum.yillar = parcalariTopla(anlik.docs.map((b) => [b.id, b.data()]));
       kCiz();
     }, () => {});
-    db.collection("kurumQ").onSnapshot((anlik) => {
-      const harita = new Map();
-      for (const belge of anlik.docs) {
-        const veri = belge.data();
-        for (const [issn, q] of Object.entries((veri && veri.esleme) || {})) harita.set(issn, q);
-      }
-      durum.quartiller = harita;
-      kCiz();
-    }, () => {});
+    // Çeyreklik listeleri büyüktür; ilk çizimi bekletmeden arka planda getirilir
+    setTimeout(async () => {
+      try {
+        const anlik = await db.collection("kurumQ").get();
+        const yillara = new Map();
+        for (const belge of anlik.docs) {
+          const veri = belge.data();
+          if (!veri || !veri.esleme) continue;
+          const yil = String(veri.yil || belge.id.split("-")[0]);
+          if (!yillara.has(yil)) yillara.set(yil, new Map());
+          const harita = yillara.get(yil);
+          for (const [issn, q] of Object.entries(veri.esleme)) harita.set(issn, q);
+        }
+        durum.quartiller = yillara;
+        kCiz();
+      } catch { /* çeyreklik verisi olmayabilir */ }
+    }, 400);
     db.doc("kurumAyarlar/personel").onSnapshot((anlik) => {
       durum.personel = (anlik.exists && anlik.data() && anlik.data().kisiler) || [];
       kCiz();
@@ -2896,17 +2940,20 @@
     else { durum.adjunct = adlar; yereleYaz(); kCiz(); }
   }
 
-  async function quartilleriYaz(harita) {
+  async function quartilleriYaz(yil, harita) {
     const girdiler = [...harita.entries()];
+    const anahtar = String(yil);
     if (durum.db) {
       const eskiler = await durum.db.collection("kurumQ").get();
-      for (const eski of eskiler.docs) await durum.db.doc(`kurumQ/${eski.id}`).delete();
-      for (let i = 0; i * 2000 < girdiler.length; i += 1) {
-        const dilim = Object.fromEntries(girdiler.slice(i * 2000, (i + 1) * 2000));
-        await durum.db.doc(`kurumQ/p${i}`).set({ esleme: dilim });
+      for (const eski of eskiler.docs) {
+        if (eski.id.startsWith(`${anahtar}-p`)) await durum.db.doc(`kurumQ/${eski.id}`).delete();
+      }
+      for (let i = 0; i * 4000 < girdiler.length; i += 1) {
+        const dilim = Object.fromEntries(girdiler.slice(i * 4000, (i + 1) * 4000));
+        await durum.db.doc(`kurumQ/${anahtar}-p${i}`).set({ yil: Number(yil), esleme: dilim });
       }
     } else {
-      durum.quartiller = harita;
+      durum.quartiller.set(anahtar, harita);
       yereleYaz();
       kCiz();
     }
@@ -3006,8 +3053,10 @@
         satirlar = await satirlariOku(dosya);
       }
       const harita = quartileAyristir(satirlar);
-      await quartilleriYaz(harita);
-      gunluk(`${dosya.name}: ${harita.size} ISSN için çeyreklik yüklendi.`);
+      const yilEslesme = dosya.name.match(/(20\d{2})/);
+      const yil = yilEslesme ? Number(yilEslesme[1]) : Number($("kYilSecimi").value) || new Date().getFullYear();
+      await quartilleriYaz(yil, harita);
+      gunluk(`${dosya.name}: ${yil} yılı için ${harita.size} ISSN çeyrekliği yüklendi.`);
       bilgiVer("Çeyreklik verisi kaydedildi.");
     } catch (hata) {
       gunluk(`HATA: ${hata.message || hata}`);
