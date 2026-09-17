@@ -3278,8 +3278,7 @@
         const bilgi = bul(yazar);
         let grup = gruplar.find((g) => g.anahtar === bilgi.anahtar);
         if (!grup) {
-          grup = { ...bilgi, yazarlar: [], yazimlar: new Set(), yayin: 0, oa: 0, q1: 0, yillar: {},
-            atif: 0 };
+          grup = { ...bilgi, yazarlar: [], yazimlar: new Set(), yayin: 0, oa: 0, q1: 0, yillar: {} };
           gruplar.push(grup);
         }
         grup.yazarlar.push(yazar);
@@ -3289,7 +3288,6 @@
         grup.yayin += 1;
         if (kayit.oaVar) grup.oa += 1;
         if (kayit.q === "Q1") grup.q1 += 1;
-        grup.atif += kayit.atif || 0;
         grup.yillar[kayit.yil] = (grup.yillar[kayit.yil] || 0) + 1;
       }
     }
@@ -3302,14 +3300,11 @@
       || a.ad.localeCompare(b.ad, "tr"));
     const yillar = [...new Set(kayitlar.map((k) => k.yil))].filter(Boolean).sort();
     const basliklar = ["Kişi", "Durum", "Unvan", "Fakülte", ...yillar.map(String), "Yayın",
-      "Açık erişim", "Atıf", "Atıf/yayın"];
+      "Açık erişim"];
     const satirlar = gruplar.map((g) => [g.ad, g.durum, g.unvan, g.fakulte,
-      ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa, g.atif,
-      g.yayin ? (g.atif / g.yayin).toFixed(1).replace(".", ",") : "·"]);
-    const toplamAtif = kayitlar.reduce((t, k) => t + (k.atif || 0), 0);
+      ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa]);
     const toplam = ["Toplam", "", "", "", ...yillar.map((y) => kayitlar.filter((k) => k.yil === y).length),
-      kayitlar.length, kayitlar.filter((k) => k.oaVar).length, toplamAtif,
-      kayitlar.length ? (toplamAtif / kayitlar.length).toFixed(1).replace(".", ",") : "·"];
+      kayitlar.length, kayitlar.filter((k) => k.oaVar).length];
     kTablo({ basliklar, satirlar, toplam, genisIlk: 230, metinSutunlari: [1, 2, 3] });
 
     const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
@@ -3325,9 +3320,7 @@
       + `${personelli.filter((g) => g.durum === "Personel").length} kişi bu dönemde yayın yapmış. `
       + `En üretken 10 yazar toplam eşleşmelerin ${yuzde(ilk(10), toplamEslesme)} kadarını, `
       + `ilk 20 yazar ${yuzde(ilk(20), toplamEslesme)} kadarını karşılıyor. `
-      + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır. "
-      + "Atıf, WoS \"Times Cited, All Databases\" sütunundan ve yalnızca bu dosyalardaki "
-      + "kurum adresli yayınlardan gelir.";
+      + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır.";
   }
 
   function yilCiz() {
