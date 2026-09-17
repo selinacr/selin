@@ -466,6 +466,14 @@
         <div class="satir">
           <button class="dugme" id="kAdjunctKaydet">Adjunct listesini kaydet</button>
         </div>
+        <div class="alan">
+          <span>Ad eşleştirme — yayında geçen yazım = kurumdaki ad. Farklı çeviri yazımlar
+            (ör. <b>Abualsayed, Mohamad Ibrahim = M. I. Sayyed</b>) burada birleştirilir.</span>
+          <textarea id="kAdEslestirme" style="min-height: 80px;"></textarea>
+        </div>
+        <div class="satir">
+          <button class="dugme" id="kAdEslestirmeKaydet">Ad eşleştirmelerini kaydet</button>
+        </div>
       </div>
     </section>
   </div>
@@ -2138,6 +2146,7 @@
     yillar: new Map(),          // "2026" -> {yil, dosya, yuklenme, kayitlar[]}
     personel: [],               // {ad, soyad, unvan, fakulte, birim, aktif}
     adjunct: [],                // adjunct/dış bağlantılı isimler
+    adEsleme: {},               // yazılan ad → kurumdaki karşılığı
     quartiller: new Map(),      // yıl -> Map(ISSN -> "Q1".."Q4")
     db: null,
     senaryo: "A",
@@ -2684,7 +2693,8 @@
    * yayınlarının hangi kaynaktan sayılacağını söyler (WoS, Scopus, ikisi).
    */
   function adjunctSatiriCoz(satir) {
-    const [adKismi, kaynakKismi = ""] = String(satir || "").split("|");
+    const [adBolumu, kaynakKismi = ""] = String(satir || "").split("|");
+    const [adKismi, ...takmalar] = String(adBolumu).split("=");
     const anahtar = yazarAdiCoz(adKismi);
     if (!anahtar) return null;
     const duz = sade(kaynakKismi);
@@ -2692,10 +2702,55 @@
     if (duz.includes("scopus") && duz.includes("wos")) kaynak = "hepsi";
     else if (duz.includes("scopus")) kaynak = "Scopus";
     else if (duz.includes("wos") || duz.includes("web of science")) kaynak = "WoS";
-    return { ...anahtar, kaynak, etiket: temizAd(adKismi) };
+    return { ...anahtar, kaynak, etiket: temizAd(adKismi),
+      takmalar: takmalar.map(temizAd).filter(Boolean) };
   }
 
   const adjunctDizini = () => durum.adjunct.map(adjunctSatiriCoz).filter(Boolean);
+
+  /**
+   * Yazarın adı elle eşleştirme listesindeyse kurumdaki karşılığıyla değiştirilir:
+   * "Abualsayed, Mohamad Ibrahim" gibi tamamen farklı yazımlar ancak böyle bulunur.
+   */
+  let eslemeHaritasi = {};
+  let eslemeKayitlari = [];
+  let eslemeBellegi = new Map();
+
+  /**
+   * Yazarın adı elle eşleştirme listesindeyse kurumdaki karşılığıyla değiştirilir.
+   * Liste birebir yazımı yakalar; yakın yazımlar (Abualsayed, Mohammad I. gibi)
+   * aynı eşleştirme satırından ad kurallarıyla bulunur.
+   */
+  function adCoz(ham) {
+    if (eslemeBellegi.has(ham)) return eslemeBellegi.get(ham);
+    let sonuc = yazarAdiCoz(eslemeHaritasi[sade(ham)] || ham);
+    if (sonuc && !eslemeHaritasi[sade(ham)]) {
+      for (const kayit of eslemeKayitlari) {
+        if (adEslesiyorMu(sonuc, kayit.anahtar)) { sonuc = yazarAdiCoz(kayit.hedef); break; }
+      }
+    }
+    eslemeBellegi.set(ham, sonuc);
+    return sonuc;
+  }
+
+  function eslemeyiKur() {
+    eslemeHaritasi = adEslemeHaritasi();
+    eslemeKayitlari = Object.entries(eslemeHaritasi)
+      .map(([yazilan, hedef]) => ({ anahtar: yazarAdiCoz(yazilan), hedef }))
+      .filter((k) => k.anahtar);
+    eslemeBellegi = new Map();
+  }
+
+  /** Adjunct satırlarındaki takma adlar da eşleştirme haritasına girer. */
+  function adEslemeHaritasi() {
+    const harita = { ...durum.adEsleme };
+    for (const satir of durum.adjunct) {
+      const cozum = adjunctSatiriCoz(satir);
+      if (!cozum) continue;
+      for (const takma of cozum.takmalar) harita[sade(takma)] = cozum.etiket;
+    }
+    return harita;
+  }
 
   /** Kayıt, bu adjunctın sözleşmesindeki veritabanında görünüyor mu? */
   function adjunctKaynagiUyuyor(adjunct, kayit) {
@@ -2776,7 +2831,8 @@
   const veriImzasi = () => [...durum.yillar.entries()]
     .map(([anahtar, yil]) => `${anahtar}:${(yil.kayitlar || []).length}:${yil.yuklenme || ""}`).join("|")
     + `#${durum.personel.length}#${durum.adjunct.join(",")}`
-    + `#${[...durum.quartiller.keys()].sort().join(",")}#${durum.kaynak}`;
+    + `#${[...durum.quartiller.keys()].sort().join(",")}#${durum.kaynak}`
+    + `#${Object.keys(durum.adEsleme).length}`;
 
   /** Kayıtlara kişi eşleşmesi ve adjunct bilgisi ekler (sonuç önbelleklenir). */
   function zenginlestir() {
@@ -2788,10 +2844,11 @@
     const kisiler = personelDizini();
     const adjunctlar = adjunctDizini();
     const dizin = adayDizini(kisiler);
+    eslemeyiKur();
     const hepsi = [];
     let bildiri = 0;
     for (const kayit of kaynaklariBirlestir(() => { bildiri += 1; })) {
-      const yazarlar = (kayit.kurumYazarlari || []).map(yazarAdiCoz).filter(Boolean);
+      const yazarlar = (kayit.kurumYazarlari || []).map(adCoz).filter(Boolean);
       const eslesen = [];
       const kurumAdlari = [];
       let adjunctVar = false;
@@ -3181,6 +3238,7 @@
     const adjunctlar = adjunctDizini();
     const gruplar = [];
     const dizin = adayDizini(kisiler);
+    eslemeyiKur();
     const bul = (yazar) => {
       const kisi = kisiBul(yazar, kisiler, dizin);
       if (kisi) {
@@ -3202,7 +3260,7 @@
     for (const kayit of kayitlar) {
       const gorulen = new Set();
       for (const ham of kayit.kurumYazarlari || []) {
-        const yazar = yazarAdiCoz(ham);
+        const yazar = adCoz(ham);
         if (!yazar || !yazar.soyad) continue;
         const bilgi = bul(yazar);
         let grup = gruplar.find((g) => g.anahtar === bilgi.anahtar);
@@ -3430,7 +3488,8 @@
   /* Depo                                                              */
   /* ---------------------------------------------------------------- */
 
-  const KY = { yillar: "kp-yillar", personel: "kp-personel", adjunct: "kp-adjunct", q: "kp-q" };
+  const KY = { yillar: "kp-yillar", personel: "kp-personel", adjunct: "kp-adjunct",
+    adlar: "kp-adlar", q: "kp-q" };
   const PARCA = 100;   // belge başına kayıt (256 KB sınırı için)
 
   function yereldenOku() {
@@ -3440,6 +3499,7 @@
     durum.yillar = new Map(Object.entries(oku(KY.yillar, "{}")));
     durum.personel = oku(KY.personel, "[]");
     durum.adjunct = oku(KY.adjunct, "[]");
+    durum.adEsleme = oku(KY.adlar, "{}");
     durum.quartiller = new Map(Object.entries(oku(KY.q, "{}"))
       .map(([yil, esleme]) => [yil, new Map(Object.entries(esleme))]));
   }
@@ -3449,6 +3509,7 @@
       localStorage.setItem(KY.yillar, JSON.stringify(Object.fromEntries(durum.yillar)));
       localStorage.setItem(KY.personel, JSON.stringify(durum.personel));
       localStorage.setItem(KY.adjunct, JSON.stringify(durum.adjunct));
+      localStorage.setItem(KY.adlar, JSON.stringify(durum.adEsleme));
       localStorage.setItem(KY.q, JSON.stringify(Object.fromEntries(
         [...durum.quartiller].map(([yil, esleme]) => [yil, Object.fromEntries(esleme)]))));
     } catch { /* depo dolu olabilir */ }
@@ -3500,6 +3561,12 @@
     db.doc("kurumAyarlar/adjunct").onSnapshot((anlik) => {
       durum.adjunct = (anlik.exists && anlik.data() && anlik.data().adlar) || [];
       $("kAdjunctListesi").value = durum.adjunct.join("\n");
+      kCiz();
+    }, () => {});
+    db.doc("kurumAyarlar/adlar").onSnapshot((anlik) => {
+      durum.adEsleme = (anlik.exists && anlik.data() && anlik.data().esleme) || {};
+      $("kAdEslestirme").value = Object.entries(durum.adEsleme)
+        .map(([yazilan, gercek]) => `${yazilan} = ${gercek}`).join("\n");
       kCiz();
     }, () => {});
   }
@@ -3745,6 +3812,26 @@
   $("kKaydetDugmesi").addEventListener("click", bekleyeniKaydet);
   $("kCsvDugmesi").addEventListener("click", kCsvIndir);
   $("kArama").addEventListener("input", (olay) => { durum.arama = olay.target.value; kCiz(); });
+  async function adEslemeYaz(esleme) {
+    durum.adEsleme = esleme;
+    if (durum.db) await durum.db.doc("kurumAyarlar/adlar").set({ esleme });
+    else { yereleYaz(); kCiz(); }
+  }
+
+  $("kAdEslestirmeKaydet").addEventListener("click", async () => {
+    const esleme = {};
+    for (const satir of $("kAdEslestirme").value.split("\n")) {
+      const [yazilan, gercek] = satir.split("=");
+      if (!yazilan || !gercek || !gercek.trim()) continue;
+      esleme[sade(yazilan)] = temizAd(gercek);
+    }
+    try {
+      await adEslemeYaz(esleme);
+      bilgiVer(`${Object.keys(esleme).length} ad eşleştirmesi kaydedildi.`);
+      gunluk(`Ad eşleştirme listesi güncellendi (${Object.keys(esleme).length} satır).`);
+    } catch (hata) { yazmaHatasi(hata); }
+  });
+
   $("kAdjunctKaydet").addEventListener("click", async () => {
     const adlar = $("kAdjunctListesi").value.split("\n").map(temizAd).filter(Boolean);
     try { await adjunctYaz(adlar); bilgiVer(`${adlar.length} adjunct adı kaydedildi.`); }
