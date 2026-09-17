@@ -908,7 +908,7 @@
     adlar: {},               // sadeleştirilmiş ad -> gösterilecek ad
     varyantlar: new Map(),
     db: null,
-    yil: "tumu", ay: "tumu", olcu: "tutar", para: "USD",
+    yil: "tumu", ay: "tumu", olcu: "tutar", para: "tumu",
     gorunum: "kisi", kontrolSuzgeci: "hepsi", arama: "",
     bekleyen: null, sonTablo: null, sonListe: [],
   };
@@ -1064,7 +1064,7 @@
     return tumKayitlar().filter((k) => {
       if (durum.yil !== "tumu" && String(k.yil) !== durum.yil) return false;
       if (durum.ay !== "tumu" && k.donem !== durum.ay) return false;
-      if (paraDahil && durum.para !== "tumu" && durum.olcu === "tutar" && k.paraBirimi !== durum.para) return false;
+      if (paraDahil && durum.para !== "tumu" && k.paraBirimi !== durum.para) return false;
       if (kontrolDahil && durum.gorunum === "kayitlar") {
         if (durum.kontrolSuzgeci === "bekleyen" && k.kontrolEdildi) return false;
         if (durum.kontrolSuzgeci === "edildi" && !k.kontrolEdildi) return false;
@@ -1149,10 +1149,10 @@
     chipCiz("olcuGrubu", OLCULER, sayimGorunumu ? "kayit" : durum.olcu,
       (deger) => { durum.olcu = deger; ciz(); }, sayimGorunumu);
     const birimler = [...new Set(tumKayitlar().map((k) => k.paraBirimi))].sort();
-    const paraSecenekleri = (birimler.length ? birimler : ["USD"]).map((b) => [b, b]);
-    if (!paraSecenekleri.some(([deger]) => deger === durum.para)) durum.para = paraSecenekleri[0][0];
+    const paraSecenekleri = [["tumu", "Tümü"], ...(birimler.length ? birimler : ["USD"]).map((b) => [b, b])];
+    if (!paraSecenekleri.some(([deger]) => deger === durum.para)) durum.para = "tumu";
     chipCiz("paraGrubu", paraSecenekleri, durum.para, (deger) => { durum.para = deger; ciz(); },
-      sayimGorunumu || durum.olcu !== "tutar");
+      durum.gorunum !== "kayitlar");
     chipCiz("gorunumGrubu", GORUNUMLER, durum.gorunum, (deger) => {
       if ((deger === "quartile" || deger === "kisiQ") && durum.olcu === "tutar") {
         durum.olcu = "kayit";
@@ -1282,32 +1282,43 @@
   }
 
   function pivotCiz(alan) {
-    const kayitlar = suzulmus();
+    // Tutar ölçüsünde para birimi süzgeci uygulanmaz: her kişi kendi biriminde
+    // ayrı satırda görünür, böylece EUR ödenen kişiler USD seçiliyken kaybolmaz.
+    const tutarOlcusu = durum.olcu === "tutar";
+    const kayitlar = suzulmus({ paraDahil: !tutarOlcusu });
     const donemler = [...new Set(kayitlar.map((k) => k.donem))].sort();
     const yillar = [...new Set(donemler.map((d) => d.slice(0, 4)))].sort();
     const gruplar = new Map();
     for (const kayit of kayitlar) {
-      const anahtar = alan === "kisi" ? kayit.kisi : kayit.qGoster;
-      if (!gruplar.has(anahtar)) gruplar.set(anahtar, []);
-      gruplar.get(anahtar).push(kayit);
+      const taban = alan === "kisi" ? kayit.kisi : kayit.qGoster;
+      const anahtar = tutarOlcusu ? `${taban} · ${kayit.paraBirimi}` : taban;
+      if (!gruplar.has(anahtar)) gruplar.set(anahtar, { ad: taban, kayitlar: [] });
+      gruplar.get(anahtar).kayitlar.push(kayit);
     }
     const basliklar = [alan === "kisi" ? "Kişi" : "Quartile",
       ...donemler.map(donemEtiketi), ...yillar, "Toplam"];
     const vurgulu = yillar.map((_, i) => 1 + donemler.length + i).concat([basliklar.length - 1]);
-    const satirlar = [...gruplar.entries()].map(([ad, grup]) => [
+    const girdiler = [...gruplar.entries()].map(([etiket, { ad, kayitlar: grup }]) => ({
       ad,
-      ...donemler.map((d) => olcuDegeri(grup.filter((k) => k.donem === d))),
-      ...yillar.map((y) => olcuDegeri(grup.filter((k) => String(k.yil) === y))),
-      olcuDegeri(grup),
-    ]).sort((a, b) => b[b.length - 1] - a[a.length - 1] || a[0].localeCompare(b[0], "tr"))
+      satir: [
+        etiket,
+        ...donemler.map((d) => olcuDegeri(grup.filter((k) => k.donem === d))),
+        ...yillar.map((y) => olcuDegeri(grup.filter((k) => String(k.yil) === y))),
+        olcuDegeri(grup),
+      ],
+    })).sort((a, b) => b.satir[b.satir.length - 1] - a.satir[a.satir.length - 1]
+      || a.satir[0].localeCompare(b.satir[0], "tr"))
       // Para ölçülerinde tutarı sıfır olan satırlar tabloyu şişirir
-      .filter((satir) => (durum.olcu === "tutar" ? satir[satir.length - 1] : true));
-    const toplam = ["Toplam",
+      .filter((girdi) => (tutarOlcusu ? girdi.satir[girdi.satir.length - 1] : true));
+    const satirlar = girdiler.map((girdi) => girdi.satir);
+    // Birden çok para birimi varsa genel toplam anlamsız olurdu, gösterilmez.
+    const birimler = [...new Set(kayitlar.filter((k) => k.tutar).map((k) => k.paraBirimi))];
+    const toplam = tutarOlcusu && birimler.length > 1 ? null : ["Toplam",
       ...donemler.map((d) => olcuDegeri(kayitlar.filter((k) => k.donem === d))),
       ...yillar.map((y) => olcuDegeri(kayitlar.filter((k) => String(k.yil) === y))),
       olcuDegeri(kayitlar)];
     tabloYaz({ basliklar, satirlar, toplam, vurguluSutunlar: vurgulu, genisIlk: 240,
-      satirTiklama: alan === "kisi" ? (i) => cekmeceAc(satirlar[i][0]) : null });
+      satirTiklama: alan === "kisi" ? (i) => cekmeceAc(girdiler[i].ad) : null });
   }
 
   function kisiQuartileCiz() {
