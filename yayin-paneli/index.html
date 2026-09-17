@@ -337,7 +337,6 @@
     <div class="grup" id="yilGrubu" role="group" aria-label="Yıl"></div>
     <div class="grup" id="olcuGrubu" role="group" aria-label="Ölçü"></div>
     <div class="grup" id="paraGrubu" role="group" aria-label="Para birimi"></div>
-    <label class="anahtar" for="odemeliKutu"><input type="checkbox" id="odemeliKutu"> Sadece ödemesi olanlar</label>
     <div class="ara">
       <input type="search" id="aramaKutusu" placeholder="Kişi, makale, dergi, DOI…" aria-label="Ara">
       <button class="dugme" id="disaAktarDugmesi">CSV indir</button>
@@ -584,8 +583,6 @@
   ];
   const OLCULER = [
     ["tutar", "Ödeme tutarı"],
-    ["usd", "USD karşılığı"],
-    ["onayli", "Ödenen yayın"],
     ["kayit", "Yayın sayısı"],
   ];
   const GORUNUMLER = [
@@ -912,7 +909,7 @@
     varyantlar: new Map(),
     db: null,
     yil: "tumu", ay: "tumu", olcu: "tutar", para: "USD",
-    gorunum: "kisi", kontrolSuzgeci: "hepsi", arama: "", sadeceOdemeli: false,
+    gorunum: "kisi", kontrolSuzgeci: "hepsi", arama: "",
     bekleyen: null, sonTablo: null, sonListe: [],
   };
 
@@ -990,18 +987,16 @@
 
   function paraBirimiCoz(kontrol, kisiKurali, odemeMetni) {
     const not = sade(kontrol);
-    const parite = String(kontrol ?? "").match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)/);
-    const usdKarsiligi = parite ? sayiyaCevir(parite[1]) : null;
-    if (/\b(cny|yuan|yuani|rmb|cin)\b/.test(not)) return { paraBirimi: "CNY", usdKarsiligi };
+    if (/\b(cny|yuan|yuani|rmb|cin)\b/.test(not)) return { paraBirimi: "CNY" };
     if (not.includes("eur") || not.includes("parite") || not.includes("paraite")) {
-      return { paraBirimi: "EUR", usdKarsiligi };
+      return { paraBirimi: "EUR" };
     }
     const nottan = dovizCoz(kontrol);
-    if (nottan) return { paraBirimi: nottan, usdKarsiligi };
+    if (nottan) return { paraBirimi: nottan };
     const odemeden = dovizCoz(odemeMetni);
-    if (odemeden) return { paraBirimi: odemeden, usdKarsiligi };
-    if (kisiKurali) return { paraBirimi: kisiKurali, usdKarsiligi };
-    return { paraBirimi: "USD", usdKarsiligi };
+    if (odemeden) return { paraBirimi: odemeden };
+    if (kisiKurali) return { paraBirimi: kisiKurali };
+    return { paraBirimi: "USD" };
   }
 
   /** Dosyalardan gelen kayıtlar + elle eklenenler, düzeltmeler uygulanmış halde. */
@@ -1050,8 +1045,6 @@
         yil,
         ay,
         paraBirimi,
-        usdKarsiligi: cozulen.usdKarsiligi ?? (paraBirimi === "USD" ? kayit.tutar : null),
-        onayli: (kayit.tutar || 0) > 0 ? 1 : 0,
         kontrolEdildi: Boolean(kayit.duzeltme && kayit.duzeltme.kontrolEdildi),
         elleDuzeltildi: Boolean(kayit.duzeltme && kayit.duzeltme.alanlar
           && Object.keys(kayit.duzeltme.alanlar).length),
@@ -1071,7 +1064,6 @@
     return tumKayitlar().filter((k) => {
       if (durum.yil !== "tumu" && String(k.yil) !== durum.yil) return false;
       if (durum.ay !== "tumu" && k.donem !== durum.ay) return false;
-      if (durum.sadeceOdemeli && !k.onayli) return false;
       if (paraDahil && durum.para !== "tumu" && durum.olcu === "tutar" && k.paraBirimi !== durum.para) return false;
       if (kontrolDahil && durum.gorunum === "kayitlar") {
         if (durum.kontrolSuzgeci === "bekleyen" && k.kontrolEdildi) return false;
@@ -1087,14 +1079,9 @@
     });
   }
 
-  const olcuDegeri = (kayitlar) => {
-    switch (durum.olcu) {
-      case "tutar": return kayitlar.reduce((t, k) => t + (k.tutar || 0), 0);
-      case "usd": return kayitlar.reduce((t, k) => t + (k.usdKarsiligi || 0), 0);
-      case "onayli": return kayitlar.reduce((t, k) => t + k.onayli, 0);
-      default: return kayitlar.length;
-    }
-  };
+  const olcuDegeri = (kayitlar) => (durum.olcu === "tutar"
+    ? kayitlar.reduce((toplam, kayit) => toplam + (kayit.tutar || 0), 0)
+    : kayitlar.length);
 
   /* ------------------------------------------------------------------ */
   /* Çizim                                                               */
@@ -1127,19 +1114,17 @@
         + ` · ${new Set(kayitlar.map((k) => k.kisi)).size} kişi`;
     }
 
+    // Para birimleri birbirine çevrilmez; her biri kendi kutusunda toplanır.
     const paraToplam = {};
-    let usdKarsiligi = 0, onayli = 0, bekleyen = 0;
+    let bekleyen = 0;
     for (const kayit of kayitlar) {
       if (kayit.tutar) paraToplam[kayit.paraBirimi] = (paraToplam[kayit.paraBirimi] || 0) + kayit.tutar;
-      usdKarsiligi += kayit.usdKarsiligi || 0;
-      onayli += kayit.onayli;
       if (!kayit.kontrolEdildi) bekleyen += 1;
     }
-    const kutular = [[String(kayitlar.length), "yayın", "vurgu"], [String(onayli), "ödenen yayın", ""]];
+    const kutular = [[String(kayitlar.length), "yayın", "vurgu"]];
     for (const [birim, toplam] of Object.entries(paraToplam).sort((a, b) => b[1] - a[1])) {
-      kutular.push([bicim(toplam), birim, ""]);
+      kutular.push([bicim(toplam), `${birim} ödeme`, ""]);
     }
-    if (usdKarsiligi) kutular.push([bicim(Math.round(usdKarsiligi)), "USD karşılığı", ""]);
     kutular.push([String(bekleyen), "kontrol bekliyor", bekleyen ? "uyari" : ""]);
 
     const kap = $("kutular");
@@ -1164,11 +1149,12 @@
     chipCiz("olcuGrubu", OLCULER, sayimGorunumu ? "kayit" : durum.olcu,
       (deger) => { durum.olcu = deger; ciz(); }, sayimGorunumu);
     const birimler = [...new Set(tumKayitlar().map((k) => k.paraBirimi))].sort();
-    chipCiz("paraGrubu", [["tumu", "Tümü"], ...(birimler.length ? birimler : ["USD"]).map((b) => [b, b])],
-      durum.para, (deger) => { durum.para = deger; ciz(); },
+    const paraSecenekleri = (birimler.length ? birimler : ["USD"]).map((b) => [b, b]);
+    if (!paraSecenekleri.some(([deger]) => deger === durum.para)) durum.para = paraSecenekleri[0][0];
+    chipCiz("paraGrubu", paraSecenekleri, durum.para, (deger) => { durum.para = deger; ciz(); },
       sayimGorunumu || durum.olcu !== "tutar");
     chipCiz("gorunumGrubu", GORUNUMLER, durum.gorunum, (deger) => {
-      if ((deger === "quartile" || deger === "kisiQ") && (durum.olcu === "tutar" || durum.olcu === "usd")) {
+      if ((deger === "quartile" || deger === "kisiQ") && durum.olcu === "tutar") {
         durum.olcu = "kayit";
       }
       durum.gorunum = deger;
@@ -1315,7 +1301,7 @@
       olcuDegeri(grup),
     ]).sort((a, b) => b[b.length - 1] - a[a.length - 1] || a[0].localeCompare(b[0], "tr"))
       // Para ölçülerinde tutarı sıfır olan satırlar tabloyu şişirir
-      .filter((satir) => (durum.olcu === "tutar" || durum.olcu === "usd" ? satir[satir.length - 1] : true));
+      .filter((satir) => (durum.olcu === "tutar" ? satir[satir.length - 1] : true));
     const toplam = ["Toplam",
       ...donemler.map((d) => olcuDegeri(kayitlar.filter((k) => k.donem === d))),
       ...yillar.map((y) => olcuDegeri(kayitlar.filter((k) => String(k.yil) === y))),
@@ -1351,21 +1337,20 @@
       if (!gruplar.has(kayit.kisi)) gruplar.set(kayit.kisi, []);
       gruplar.get(kayit.kisi).push(kayit);
     }
-    const basliklar = ["Kişi", "Yayın", "Ödenen", ...birimler, "USD karşılığı"];
+    const birimToplam = (liste, birim) => liste.filter((k) => k.paraBirimi === birim)
+      .reduce((toplam, k) => toplam + (k.tutar || 0), 0);
+    const basliklar = ["Kişi", "Yayın", ...birimler.map((b) => `${b} ödeme`)];
     const satirlar = [...gruplar.entries()].map(([ad, grup]) => [
-      ad, grup.length, grup.reduce((t, k) => t + k.onayli, 0),
-      ...birimler.map((b) => grup.filter((k) => k.paraBirimi === b).reduce((t, k) => t + (k.tutar || 0), 0)),
-      Math.round(grup.reduce((t, k) => t + (k.usdKarsiligi || 0), 0)),
-    ]).sort((a, b) => b[b.length - 1] - a[a.length - 1] || b[1] - a[1]);
-    const toplam = ["Toplam", kayitlar.length, kayitlar.reduce((t, k) => t + k.onayli, 0),
-      ...birimler.map((b) => kayitlar.filter((k) => k.paraBirimi === b).reduce((t, k) => t + (k.tutar || 0), 0)),
-      Math.round(kayitlar.reduce((t, k) => t + (k.usdKarsiligi || 0), 0))];
+      ad, grup.length, ...birimler.map((b) => birimToplam(grup, b)),
+    ]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "tr"));
+    const toplam = ["Toplam", kayitlar.length, ...birimler.map((b) => birimToplam(kayitlar, b))];
     tabloYaz({ basliklar, satirlar, toplam, genisIlk: 240,
       satirTiklama: (i) => cekmeceAc(satirlar[i][0]) });
   }
 
   function kirilimCiz(alan) {
-    const kayitlar = suzulmus();
+    // Para birimleri ayrı sütunlarda gösterildiği için birim süzgeci uygulanmaz.
+    const kayitlar = suzulmus({ paraDahil: false });
     const gruplar = new Map();
     for (const kayit of kayitlar) {
       const anahtar = alan === "dergi" ? (kayit.dergi || "(boş)")
@@ -1373,15 +1358,18 @@
       if (!gruplar.has(anahtar)) gruplar.set(anahtar, []);
       gruplar.get(anahtar).push(kayit);
     }
-    const basliklar = [alan === "dergi" ? "Dergi" : "Ödeme", "Yayın", "Ödenen", "Kişi",
-      "Toplam", "USD karşılığı"];
+    const birimler = [...new Set(kayitlar.filter((k) => k.tutar).map((k) => k.paraBirimi))].sort();
+    const birimToplam = (liste, birim) => liste.filter((k) => k.paraBirimi === birim)
+      .reduce((toplam, k) => toplam + (k.tutar || 0), 0);
+    const basliklar = [alan === "dergi" ? "Dergi" : "Ödeme", "Yayın", "Kişi",
+      ...birimler.map((b) => `${b} ödeme`)];
     const satirlar = [...gruplar.entries()].map(([ad, grup]) => [
-      ad, grup.length, grup.reduce((t, k) => t + k.onayli, 0),
-      new Set(grup.map((k) => k.kisi)).size,
-      grup.reduce((t, k) => t + (k.tutar || 0), 0),
-      Math.round(grup.reduce((t, k) => t + (k.usdKarsiligi || 0), 0)),
-    ]).sort((a, b) => b[4] - a[4] || b[1] - a[1]);
-    tabloYaz({ basliklar, satirlar, genisIlk: 320 });
+      ad, grup.length, new Set(grup.map((k) => k.kisi)).size,
+      ...birimler.map((b) => birimToplam(grup, b)),
+    ]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "tr"));
+    const toplam = ["Toplam", kayitlar.length, new Set(kayitlar.map((k) => k.kisi)).size,
+      ...birimler.map((b) => birimToplam(kayitlar, b))];
+    tabloYaz({ basliklar, satirlar, toplam, genisIlk: 320 });
   }
 
   const telefon = () => window.matchMedia("(max-width: 640px)").matches;
@@ -1465,9 +1453,9 @@
     kisi: "Kişiye tıkla: yıllık dökümü, para birimi kuralı ve ad birleştirme.",
     kisiQ: "Kişi başına Q1–Q4 yayın sayısı. Yıl düğmesiyle 2025 / 2026 ayrı ayrı.",
     quartile: "Ay ve yıl bazında Q1–Q4 sayıları; sağdaki yıl sütunları o yılın toplamı.",
-    ozet: "Para birimi sütunları ayrı toplanır; USD karşılığı hepsini tek ölçüye getirir.",
+    ozet: "Her para birimi kendi sütununda toplanır; birimler birbirine çevrilmez.",
     dergi: "Dergi bazında yayın ve ödeme dağılımı.",
-    dagilim: "Tutar bazında dağılım (500 / 450 / 400 …) ve ödemesiz kayıtlar.",
+    dagilim: "Tutar bazında dağılım (500 / 450 / 400 …); her para birimi ayrı sütunda.",
     kayitlar: "Her makaleye tıklayıp kontrol et; düzeltmelerin ay yeniden yüklendiğinde korunur.",
   };
 
@@ -1545,7 +1533,6 @@
     const q = (ad) => kayitlar.filter((k) => k.qGoster === ad).length;
     $("cekmeceOzet").textContent = `${kayitlar.length} yayın · `
       + `Q1 ${q("Q1")} · Q2 ${q("Q2")} · Q3 ${q("Q3")} · Q4 ${q("Q4")} · `
-      + `${kayitlar.reduce((t, k) => t + k.onayli, 0)} ödenen · `
       + Object.entries(paralar).map(([b, v]) => `${bicim(v)} ${b}`).join("  ");
 
     const varyantlar = durum.varyantlar.get(kisi) || [];
@@ -2064,7 +2051,6 @@
   $("kaydetDugmesi").addEventListener("click", bekleyeniKaydet);
   $("disaAktarDugmesi").addEventListener("click", csvIndir);
   $("kayitEkleDugmesi").addEventListener("click", () => kayitFormuAc(null));
-  $("odemeliKutu").addEventListener("change", (olay) => { durum.sadeceOdemeli = olay.target.checked; ciz(); });
   $("aramaKutusu").addEventListener("input", (olay) => { durum.arama = olay.target.value; ciz(); });
   $("cekmeceKapat").addEventListener("click", cekmeceKapat);
   $("duzenleKapat").addEventListener("click", duzenlemeKapat);
