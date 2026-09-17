@@ -1115,16 +1115,14 @@
 
     // Para birimleri birbirine çevrilmez; her biri kendi kutusunda toplanır.
     const paraToplam = {};
-    let bekleyen = 0;
     for (const kayit of kayitlar) {
       if (kayit.tutar) paraToplam[kayit.paraBirimi] = (paraToplam[kayit.paraBirimi] || 0) + kayit.tutar;
-      if (!kayit.kontrolEdildi) bekleyen += 1;
     }
-    const kutular = [[String(kayitlar.length), "yayın", "vurgu"]];
+    const kutular = [[String(kayitlar.length), "yayın", "vurgu"],
+      [String(new Set(kayitlar.map((k) => k.kisi)).size), "kişi", ""]];
     for (const [birim, toplam] of Object.entries(paraToplam).sort((a, b) => b[1] - a[1])) {
       kutular.push([bicim(toplam), `${birim} ödeme`, ""]);
     }
-    kutular.push([String(bekleyen), "kontrol bekliyor", bekleyen ? "uyari" : ""]);
 
     const kap = $("kutular");
     kap.textContent = "";
