@@ -336,7 +336,6 @@
   <section class="araclar" aria-label="Filtreler">
     <div class="grup" id="yilGrubu" role="group" aria-label="Yıl"></div>
     <div class="grup" id="olcuGrubu" role="group" aria-label="Ölçü"></div>
-    <div class="grup" id="paraGrubu" role="group" aria-label="Para birimi"></div>
     <div class="ara">
       <input type="search" id="aramaKutusu" placeholder="Kişi, makale, dergi, DOI…" aria-label="Ara">
       <button class="dugme" id="disaAktarDugmesi">CSV indir</button>
@@ -907,7 +906,7 @@
     adlar: {},               // sadeleştirilmiş ad -> gösterilecek ad
     varyantlar: new Map(),
     db: null,
-    yil: "tumu", ay: "tumu", olcu: "tutar", para: "tumu",
+    yil: "tumu", ay: "tumu", olcu: "tutar",
     gorunum: "kisi", kontrolSuzgeci: "hepsi", arama: "",
     bekleyen: null, sonTablo: null, sonListe: [],
   };
@@ -1058,12 +1057,11 @@
     return donemAdi(Number(anahtar.slice(0, 4)), Number(anahtar.slice(5)));
   };
 
-  function suzulmus({ paraDahil = true, kontrolDahil = true } = {}) {
+  function suzulmus({ kontrolDahil = true } = {}) {
     const arama = sade(durum.arama);
     return tumKayitlar().filter((k) => {
       if (durum.yil !== "tumu" && String(k.yil) !== durum.yil) return false;
       if (durum.ay !== "tumu" && k.donem !== durum.ay) return false;
-      if (paraDahil && durum.para !== "tumu" && k.paraBirimi !== durum.para) return false;
       if (kontrolDahil && durum.gorunum === "kayitlar") {
         if (durum.kontrolSuzgeci === "bekleyen" && k.kontrolEdildi) return false;
         if (durum.kontrolSuzgeci === "edildi" && !k.kontrolEdildi) return false;
@@ -1102,7 +1100,7 @@
   }
 
   function tepeCiz() {
-    const kayitlar = suzulmus({ paraDahil: false, kontrolDahil: false });
+    const kayitlar = suzulmus({ kontrolDahil: false });
     const donemler = [...durum.aylar.keys()].sort();
     const altBaslik = $("altBaslik");
     if (!donemler.length) {
@@ -1149,11 +1147,6 @@
     const sayimGorunumu = durum.gorunum === "kisiQ" || durum.gorunum === "kayitlar";
     chipCiz("olcuGrubu", OLCULER, sayimGorunumu ? "kayit" : durum.olcu,
       (deger) => { durum.olcu = deger; ciz(); }, sayimGorunumu);
-    const birimler = [...new Set(tumKayitlar().map((k) => k.paraBirimi))].sort();
-    const paraSecenekleri = [["tumu", "Tümü"], ...(birimler.length ? birimler : ["USD"]).map((b) => [b, b])];
-    if (!paraSecenekleri.some(([deger]) => deger === durum.para)) durum.para = "tumu";
-    chipCiz("paraGrubu", paraSecenekleri, durum.para, (deger) => { durum.para = deger; ciz(); },
-      durum.gorunum !== "kayitlar");
     chipCiz("gorunumGrubu", GORUNUMLER, durum.gorunum, (deger) => {
       if ((deger === "quartile" || deger === "kisiQ") && durum.olcu === "tutar") {
         durum.olcu = "kayit";
@@ -1286,7 +1279,7 @@
     // Tutar ölçüsünde para birimi süzgeci uygulanmaz: her kişi kendi biriminde
     // ayrı satırda görünür, böylece EUR ödenen kişiler USD seçiliyken kaybolmaz.
     const tutarOlcusu = durum.olcu === "tutar";
-    const kayitlar = suzulmus({ paraDahil: !tutarOlcusu });
+    const kayitlar = suzulmus();
     const donemler = [...new Set(kayitlar.map((k) => k.donem))].sort();
     const yillar = [...new Set(donemler.map((d) => d.slice(0, 4)))].sort();
     const gruplar = new Map();
@@ -1323,7 +1316,7 @@
   }
 
   function kisiQuartileCiz() {
-    const kayitlar = suzulmus({ paraDahil: false });
+    const kayitlar = suzulmus();
     const bosVar = kayitlar.some((k) => !k.q);
     const sutunlar = bosVar ? [...QUARTILELER, "—"] : [...QUARTILELER];
     const gruplar = new Map();
@@ -1342,7 +1335,7 @@
   }
 
   function kisiOzetiCiz() {
-    const kayitlar = suzulmus({ paraDahil: false });
+    const kayitlar = suzulmus();
     const birimler = [...new Set(kayitlar.filter((k) => k.tutar).map((k) => k.paraBirimi))].sort();
     const gruplar = new Map();
     for (const kayit of kayitlar) {
@@ -1362,7 +1355,7 @@
 
   function dergiCiz() {
     // Para birimleri ayrı sütunlarda gösterildiği için birim süzgeci uygulanmaz.
-    const kayitlar = suzulmus({ paraDahil: false });
+    const kayitlar = suzulmus();
     const gruplar = new Map();
     for (const kayit of kayitlar) {
       const anahtar = kayit.dergi || "(boş)";
