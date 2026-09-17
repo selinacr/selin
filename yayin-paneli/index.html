@@ -1108,8 +1108,12 @@
     if (!donemler.length) {
       altBaslik.textContent = "Henüz ay yüklenmedi — aşağıdan ilk Excel dosyasını ekle.";
     } else {
-      altBaslik.textContent = `${donemEtiketi(donemler[0])} – ${donemEtiketi(donemler[donemler.length - 1])}`
-        + ` · ${donemler.length} dönem · ${kayitlar.length} yayın`
+      // Bir ay ya da yıl seçiliyse başlıkta dönem aralığı yerine o seçim yazar.
+      const secim = durum.ay !== "tumu" ? donemEtiketi(durum.ay)
+        : (durum.yil !== "tumu" ? `${durum.yil} yılı`
+          : `${donemEtiketi(donemler[0])} – ${donemEtiketi(donemler[donemler.length - 1])}`
+            + ` · ${donemler.length} dönem`);
+      altBaslik.textContent = `${secim} · ${kayitlar.length} yayın`
         + ` · ${new Set(kayitlar.map((k) => k.kisi)).size} kişi`;
     }
 
