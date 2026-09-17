@@ -3143,14 +3143,30 @@
       + `${eslesmeyen} yayın hiçbir personel kaydıyla eşleşmedi (ayrılmış/listede olmayan yazarlar ve yazım farkları).`;
   }
 
+  const INDEKS_ACIKLAMALARI = {
+    "SCI-EXPANDED": "Science Citation Index Expanded — fen ve mühendislik dergileri",
+    SSCI: "Social Sciences Citation Index — sosyal bilimler dergileri",
+    "A&HCI": "Arts & Humanities Citation Index — sanat ve beşerî bilimler dergileri",
+    ESCI: "Emerging Sources Citation Index — yükselen dergiler",
+    "CPCI-S": "Conference Proceedings Citation Index – Science — fen bilimleri konferans bildirileri",
+    "CPCI-SSH": "Conference Proceedings Citation Index – Social Science & Humanities — "
+      + "sosyal bilimler konferans bildirileri",
+    BKCI: "Book Citation Index — kitap ve kitap bölümleri",
+    Scopus: "Scopus veritabanı kaydı",
+  };
+
   function indeksCiz() {
     const a = suzulmus("A"), b = suzulmus("B");
     const satirlar = INDEKS_ADLARI.map(([ad]) => {
       const sa = a.filter((k) => k.indeksler.includes(ad)).length;
       const sb = b.filter((k) => k.indeksler.includes(ad)).length;
-      return [ad, sa, sb, sb - sa, yuzde(sa, a.length), yuzde(sb, b.length)];
-    }).filter((s) => s[1] || s[2]);
-    kTablo({ basliklar: ["İndeks", "A", "B", "Fark", "A payı", "B payı"], satirlar, genisIlk: 260 });
+      return [ad, INDEKS_ACIKLAMALARI[ad] || "", sa, sb, sb - sa, yuzde(sa, a.length), yuzde(sb, b.length)];
+    }).filter((satir) => satir[2] || satir[3]);
+    kTablo({ basliklar: ["İndeks", "Açılımı", "A", "B", "Fark", "A payı", "B payı"],
+      satirlar, genisIlk: 130, metinSutunlari: [1] });
+    $("kGorunumNotu").textContent = "CPCI-S ve CPCI-SSH konferans bildirisi indeksleridir; "
+      + "bildiriler analiz dışı tutulduğu için buradaki sayılar yalnızca bildiri dışı "
+      + "belgelerin bu indekslerde de taranmasından gelir.";
   }
 
   const Q_SIRASI = ["Q1", "Q2", "Q3", "Q4", "Sınıflandırılamayan", "Bildiri"];
