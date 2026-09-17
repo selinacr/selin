@@ -3415,7 +3415,7 @@
     if (kaynaklar.size < 2) durum.kaynak = "hepsi";
     else {
       chipCiz("kKaynakGrubu", [["hepsi", "WoS + Scopus"], ["WoS", "Yalnız WoS"],
-        ["Scopus", "Yalnız Scopus"], ["ortak", "İkisinde de"]], durum.kaynak,
+        ["Scopus", "Yalnız Scopus"], ["ortak", "Ortak yayınlar"]], durum.kaynak,
         (deger) => { durum.kaynak = deger; kCiz(); });
     }
     const yillar = [...new Set(zenginlestir().map((k) => k.yil))].filter(Boolean).sort();
