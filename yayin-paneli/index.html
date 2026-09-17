@@ -427,7 +427,8 @@
       <div style="display: flex; flex-direction: column; gap: 10px;">
         <h3>Veri yükle</h3>
         <p class="kucuk-not">WoS "Full Record" dışa aktarımı (.xls/.xlsx), Scopus dışa aktarımı (.csv),
-          kurum personel listesi ve istersen SCImago SJR dosyası (ISSN → çeyreklik). Aynı kaynağın
+          kurum personel listesi, SCImago SJR dosyası (ISSN → çeyreklik) ve istersen
+          OpenAlex yazar metrikleri (atıf, h indeksi — api.openalex.org/authors çıktısı). Aynı kaynağın
           aynı yılı yeniden yüklenirse yalnızca o tazelenir; iki veritabanında da bulunan yayınlar
           DOI ile tek sayılır.</p>
         <div class="birak" id="kBirak">
@@ -436,11 +437,13 @@
             <button class="dugme" id="kScopusDugmesi">Scopus dosyası</button>
             <button class="dugme" id="kPersonelDugmesi">Personel listesi</button>
             <button class="dugme" id="kSjrDugmesi">SJR / çeyreklik</button>
+            <button class="dugme" id="kMetrikDugmesi">OpenAlex metrikleri</button>
           </div>
           <input type="file" id="kWosGirisi" accept=".xls,.xlsx,.xlsm" hidden>
           <input type="file" id="kScopusGirisi" accept=".csv,.xls,.xlsx" hidden>
           <input type="file" id="kPersonelGirisi" accept=".xls,.xlsx,.xlsm" hidden>
           <input type="file" id="kSjrGirisi" accept=".csv,.xls,.xlsx" hidden>
+          <input type="file" id="kMetrikGirisi" accept=".json,.txt" multiple hidden>
           <span class="kucuk-not" id="kDosyaDurumu">Henüz dosya seçilmedi.</span>
           <div class="satir" id="kOnaySatiri" hidden>
             <label class="kucuk-not" for="kYilSecimi">Yıl</label>
@@ -608,6 +611,9 @@
     .toLocaleLowerCase("tr")
     .replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g")
     .replace(/ü/g, "u").replace(/ö/g, "o").replace(/ç/g, "c").replace(/â/g, "a")
+    // Yabancı aksanlar (Pamučar, Šimić, Sørensen…) harf köküne indirilir
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đ]/g, "d").replace(/[ø]/g, "o").replace(/[ß]/g, "ss").replace(/[æ]/g, "ae")
     .replace(/[^a-z0-9]+/g, " ").trim();
 
   const temizAd = (deger) => String(deger ?? "").replace(/\s+/g, " ").trim();
@@ -2134,6 +2140,7 @@
     personel: [],               // {ad, soyad, unvan, fakulte, birim, aktif}
     adjunct: [],                // adjunct/dış bağlantılı isimler
     adEsleme: {},               // yazılan ad → kurumdaki karşılığı
+    metrikler: [],              // OpenAlex yazar metrikleri (atıf, h indeksi)
     quartiller: new Map(),      // yıl -> Map(ISSN -> "Q1".."Q4")
     db: null,
     senaryo: "A",
@@ -2561,6 +2568,42 @@
       uyarilar.push("ISSN sütunu yok: bu kayıtların çeyrekliği dergi adından eşleştirilir.");
     }
     return { kayitlar, uyarilar };
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* OpenAlex yazar metrikleri (atıf ve h indeksi)                      */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * OpenAlex /authors çıktısındaki JSON'dan yazar başına atıf ve h indeksi.
+   * Aynı kişinin birden çok profili olabildiği için kayıtlar ad üzerinden
+   * birleştirilir: atıflar toplanır, h indeksinin en büyüğü alınır.
+   */
+  function openAlexAyristir(metin) {
+    let veri;
+    try {
+      veri = JSON.parse(metin);
+    } catch {
+      throw new Error("Dosya OpenAlex JSON çıktısı değil.");
+    }
+    const kayitlar = Array.isArray(veri) ? veri : (veri.results || []);
+    if (!Array.isArray(kayitlar) || !kayitlar.length) {
+      throw new Error("Dosyada yazar kaydı bulunamadı (results boş).");
+    }
+    return kayitlar.map((kayit) => ({
+      ad: temizAd(kayit.display_name || ""),
+      kimlik: String(kayit.id || "").replace("https://openalex.org/", ""),
+      atif: Number(kayit.cited_by_count) || 0,
+      yayin: Number(kayit.works_count) || 0,
+      h: Number((kayit.summary_stats || {}).h_index) || 0,
+    })).filter((kayit) => kayit.ad);
+  }
+
+  /** Profilleri kişi adına göre birleştirir: atıf toplanır, h'nin en büyüğü alınır. */
+  function metrikleriBirlestir(mevcut, yeniler) {
+    const harita = new Map(mevcut.map((kayit) => [kayit.kimlik || sade(kayit.ad), kayit]));
+    for (const kayit of yeniler) harita.set(kayit.kimlik || sade(kayit.ad), kayit);
+    return [...harita.values()];
   }
 
   function personelAyristir(satirlar) {
@@ -3284,17 +3327,52 @@
     return gruplar;
   }
 
+  /**
+   * Metrik kayıtlarını kişi adlarına bağlar. Aynı kişinin birden çok OpenAlex
+   * profili varsa atıflar toplanır, h indeksinin en büyüğü alınır.
+   */
+  function metrikDizini() {
+    const kisiler = personelDizini();
+    const adjunctlar = adjunctDizini();
+    const dizin = adayDizini(kisiler);
+    const sonuc = new Map();
+    const ekle = (anahtar, kayit) => {
+      const mevcut = sonuc.get(anahtar) || { atif: 0, h: 0, profil: 0 };
+      sonuc.set(anahtar, {
+        atif: mevcut.atif + kayit.atif,
+        h: Math.max(mevcut.h, kayit.h),
+        profil: mevcut.profil + 1,
+      });
+    };
+    for (const kayit of durum.metrikler) {
+      const yazar = adCoz(kayit.ad);
+      if (!yazar || !yazar.soyad) continue;
+      const adjunct = adjunctlar.find((a) => adEslesiyorMu(yazar, a));
+      if (adjunct) { ekle(`a:${sade(adjunct.ham)}`, kayit); continue; }
+      const kisi = kisiBul(yazar, kisiler, dizin);
+      if (kisi) ekle(`p:${sade(kisi.ad)} ${sade(kisi.soyad)}`, kayit);
+    }
+    return sonuc;
+  }
+
   function kisiCiz() {
     const kayitlar = suzulmus();
     const gruplar = yazarGruplari(kayitlar).sort((a, b) => b.yayin - a.yayin
       || a.ad.localeCompare(b.ad, "tr"));
     const yillar = [...new Set(kayitlar.map((k) => k.yil))].filter(Boolean).sort();
+    const metrikVar = durum.metrikler.length > 0;
+    const metrikler = metrikVar ? metrikDizini() : new Map();
     const basliklar = ["Kişi", "Durum", "Unvan", "Fakülte", ...yillar.map(String), "Yayın",
-      "Açık erişim"];
-    const satirlar = gruplar.map((g) => [g.ad, g.durum, g.unvan, g.fakulte,
-      ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa]);
+      "Açık erişim", ...(metrikVar ? ["Atıf (OpenAlex)", "h (OpenAlex)"] : [])];
+    const satirlar = gruplar.map((g) => {
+      const metrik = metrikler.get(g.anahtar);
+      return [g.ad, g.durum, g.unvan, g.fakulte,
+        ...yillar.map((y) => g.yillar[y] || 0), g.yayin, g.oa,
+        ...(metrikVar ? [metrik ? metrik.atif : "·", metrik ? metrik.h : "·"] : [])];
+    });
     const toplam = ["Toplam", "", "", "", ...yillar.map((y) => kayitlar.filter((k) => k.yil === y).length),
-      kayitlar.length, kayitlar.filter((k) => k.oaVar).length];
+      kayitlar.length, kayitlar.filter((k) => k.oaVar).length,
+      ...(metrikVar ? ["", ""] : [])];
     kTablo({ basliklar, satirlar, toplam, genisIlk: 230, metinSutunlari: [1, 2, 3] });
 
     const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
@@ -3310,7 +3388,12 @@
       + `${personelli.filter((g) => g.durum === "Personel").length} kişi bu dönemde yayın yapmış. `
       + `En üretken 10 yazar toplam eşleşmelerin ${yuzde(ilk(10), toplamEslesme)} kadarını, `
       + `ilk 20 yazar ${yuzde(ilk(20), toplamEslesme)} kadarını karşılıyor. `
-      + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır.";
+      + "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır."
+      + (durum.metrikler.length
+        ? ` Atıf ve h indeksi OpenAlex yazar profillerinden gelir (${durum.metrikler.length} profil);`
+          + " kişinin tüm kariyerini kapsar, kurum dışı yayınları da içerir."
+          + " Aynı kişinin birden çok profili varsa atıflar toplanır, h'nin en büyüğü alınır."
+        : "");
   }
 
   function yilCiz() {
@@ -3485,7 +3568,7 @@
   /* ---------------------------------------------------------------- */
 
   const KY = { yillar: "kp-yillar", personel: "kp-personel", adjunct: "kp-adjunct",
-    adlar: "kp-adlar", q: "kp-q" };
+    adlar: "kp-adlar", metrik: "kp-metrik", q: "kp-q" };
   const PARCA = 100;   // belge başına kayıt (256 KB sınırı için)
 
   function yereldenOku() {
@@ -3496,6 +3579,7 @@
     durum.personel = oku(KY.personel, "[]");
     durum.adjunct = oku(KY.adjunct, "[]");
     durum.adEsleme = oku(KY.adlar, "{}");
+    durum.metrikler = oku(KY.metrik, "[]");
     durum.quartiller = new Map(Object.entries(oku(KY.q, "{}"))
       .map(([yil, esleme]) => [yil, new Map(Object.entries(esleme))]));
   }
@@ -3506,6 +3590,7 @@
       localStorage.setItem(KY.personel, JSON.stringify(durum.personel));
       localStorage.setItem(KY.adjunct, JSON.stringify(durum.adjunct));
       localStorage.setItem(KY.adlar, JSON.stringify(durum.adEsleme));
+      localStorage.setItem(KY.metrik, JSON.stringify(durum.metrikler));
       localStorage.setItem(KY.q, JSON.stringify(Object.fromEntries(
         [...durum.quartiller].map(([yil, esleme]) => [yil, Object.fromEntries(esleme)]))));
     } catch { /* depo dolu olabilir */ }
@@ -3557,6 +3642,10 @@
     db.doc("kurumAyarlar/adjunct").onSnapshot((anlik) => {
       durum.adjunct = (anlik.exists && anlik.data() && anlik.data().adlar) || [];
       $("kAdjunctListesi").value = durum.adjunct.join("\n");
+      kCiz();
+    }, () => {});
+    db.doc("kurumAyarlar/metrikler").onSnapshot((anlik) => {
+      durum.metrikler = (anlik.exists && anlik.data() && anlik.data().kisiler) || [];
       kCiz();
     }, () => {});
     db.doc("kurumAyarlar/adlar").onSnapshot((anlik) => {
@@ -3770,6 +3859,35 @@
     $("kSjrGirisi").value = "";
   }
 
+  async function metrikleriYaz(kayitlar) {
+    durum.metrikler = kayitlar;
+    if (durum.db) {
+      await durum.db.doc("kurumAyarlar/metrikler")
+        .set({ kisiler: kayitlar, guncelleme: new Date().toISOString() });
+    } else { yereleYaz(); kCiz(); }
+  }
+
+  async function metrikYukle(dosyalar) {
+    if (!dosyalar || !dosyalar.length) return;
+    try {
+      let birikmis = durum.metrikler;
+      let okunan = 0;
+      for (const dosya of dosyalar) {
+        const kayitlar = openAlexAyristir(await dosya.text());
+        birikmis = metrikleriBirlestir(birikmis, kayitlar);
+        okunan += kayitlar.length;
+        gunluk(`${dosya.name}: ${kayitlar.length} yazar profili okundu.`);
+      }
+      await metrikleriYaz(birikmis);
+      const eslesen = metrikDizini().size;
+      gunluk(`Toplam ${birikmis.length} profil kayıtlı; ${eslesen} kişiyle eşleşti.`);
+      bilgiVer(`${okunan} yazar profili yüklendi.`);
+    } catch (hata) {
+      gunluk(`HATA: ${hata.message || hata}`);
+    }
+    $("kMetrikGirisi").value = "";
+  }
+
   async function kCsvIndir() {
     if (!durum.sonTablo || !durum.sonTablo.satirlar.length) { bilgiVer("İndirilecek satır yok."); return; }
     const kacir = (h) => {
@@ -3803,6 +3921,8 @@
   $("kPersonelGirisi").addEventListener("change", (olay) => personelYukle(olay.target.files[0]));
   $("kScopusDugmesi").addEventListener("click", () => $("kScopusGirisi").click());
   $("kScopusGirisi").addEventListener("change", (olay) => scopusYukle(olay.target.files[0]));
+  $("kMetrikDugmesi").addEventListener("click", () => $("kMetrikGirisi").click());
+  $("kMetrikGirisi").addEventListener("change", (olay) => metrikYukle([...olay.target.files]));
   $("kSjrDugmesi").addEventListener("click", () => $("kSjrGirisi").click());
   $("kSjrGirisi").addEventListener("change", (olay) => sjrYukle(olay.target.files[0]));
   $("kKaydetDugmesi").addEventListener("click", bekleyeniKaydet);
@@ -3858,7 +3978,8 @@
   kCiz();
   depoyaBaglan();
 
-  window.KurumPaneli = { durum, wosAyristir, scopusAyristir, csvSatirlari, personelAyristir, quartileAyristir, yazarAdiCoz,
+  window.KurumPaneli = { durum, wosAyristir, scopusAyristir, csvSatirlari, openAlexAyristir,
+    metrikDizini, personelAyristir, quartileAyristir, yazarAdiCoz,
     adEslesiyorMu, kurumYazarlari };
   });
 })();
