@@ -591,7 +591,6 @@
     ["quartile", "Quartile × ay"],
     ["ozet", "Kişi özeti"],
     ["dergi", "Dergi"],
-    ["dagilim", "Ödeme dağılımı"],
     ["kayitlar", "Makaleler · düzenle"],
   ];
   const KONTROL_SUZGECLERI = [
@@ -1359,21 +1358,19 @@
       satirTiklama: (i) => cekmeceAc(satirlar[i][0]) });
   }
 
-  function kirilimCiz(alan) {
+  function dergiCiz() {
     // Para birimleri ayrı sütunlarda gösterildiği için birim süzgeci uygulanmaz.
     const kayitlar = suzulmus({ paraDahil: false });
     const gruplar = new Map();
     for (const kayit of kayitlar) {
-      const anahtar = alan === "dergi" ? (kayit.dergi || "(boş)")
-        : (kayit.tutar ? `${bicim(kayit.tutar)} ${kayit.paraBirimi}` : "ödemesiz");
+      const anahtar = kayit.dergi || "(boş)";
       if (!gruplar.has(anahtar)) gruplar.set(anahtar, []);
       gruplar.get(anahtar).push(kayit);
     }
     const birimler = [...new Set(kayitlar.filter((k) => k.tutar).map((k) => k.paraBirimi))].sort();
     const birimToplam = (liste, birim) => liste.filter((k) => k.paraBirimi === birim)
       .reduce((toplam, k) => toplam + (k.tutar || 0), 0);
-    const basliklar = [alan === "dergi" ? "Dergi" : "Ödeme", "Yayın", "Kişi",
-      ...birimler.map((b) => `${b} ödeme`)];
+    const basliklar = ["Dergi", "Yayın", "Kişi", ...birimler.map((b) => `${b} ödeme`)];
     const satirlar = [...gruplar.entries()].map(([ad, grup]) => [
       ad, grup.length, new Set(grup.map((k) => k.kisi)).size,
       ...birimler.map((b) => birimToplam(grup, b)),
@@ -1466,7 +1463,6 @@
     quartile: "Ay ve yıl bazında Q1–Q4 sayıları; sağdaki yıl sütunları o yılın toplamı.",
     ozet: "Her para birimi kendi sütununda toplanır; birimler birbirine çevrilmez.",
     dergi: "Dergi bazında yayın ve ödeme dağılımı.",
-    dagilim: "Tutar bazında dağılım (500 / 450 / 400 …); her para birimi ayrı sütunda.",
     kayitlar: "Her makaleye tıklayıp kontrol et; düzeltmelerin ay yeniden yüklendiğinde korunur.",
   };
 
@@ -1479,8 +1475,7 @@
     else if (durum.gorunum === "quartile") pivotCiz("quartile");
     else if (durum.gorunum === "kisiQ") kisiQuartileCiz();
     else if (durum.gorunum === "ozet") kisiOzetiCiz();
-    else if (durum.gorunum === "dergi") kirilimCiz("dergi");
-    else if (durum.gorunum === "dagilim") kirilimCiz("dagilim");
+    else if (durum.gorunum === "dergi") dergiCiz();
     else makaleleriCiz();
   }
 
