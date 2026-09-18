@@ -61,3 +61,11 @@ python -m pytest testler -q
 `veri/panel.db` içinde tutar. Aynı dosyaları ikisine de yükleyebilirsiniz; sayılar
 aynı çıkar (karşılaştırma: 2022–2026 için 1.312 tekil yayın, Q1 575, 237 kişi
 OpenAlex metriğiyle eşleşir).
+
+## Sık karşılaşılan iki hata
+
+- **`No module named 'panel.analiz'`** — eski sürümü çalıştırıyorsunuz. Klasörde
+  `panel` değil `yayin_paneli` klasörü olmalı; depoyu yeniden indirin.
+- **`numpy.core.multiarray failed to import`** — Anaconda'daki `pyarrow` eski numpy'a
+  göre derlenmiş. `python -m pip install -U pyarrow numpy pandas` komutunu çalıştırıp
+  paneli yeniden başlatın.

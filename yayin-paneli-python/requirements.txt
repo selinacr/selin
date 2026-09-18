@@ -1,5 +1,9 @@
+# Anaconda ile kurulu paketler eski numpy'a gore derlenmis olabiliyor;
+# pyarrow ve numpy birlikte guncellenince tablo cizimi sorunsuz calisir.
 streamlit>=1.30
-pandas>=2.0
+pandas>=2.0,<3
+numpy>=1.26
+pyarrow>=15
 openpyxl>=3.1
 xlrd>=2.0
 pytest>=7.4
