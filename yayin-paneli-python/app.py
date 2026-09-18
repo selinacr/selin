@@ -10,11 +10,11 @@ import json
 import pandas as pd
 import streamlit as st
 
-from panel.analiz import Panel
-from panel.aylik import AdjunctPanel, ay_ayristir, donem_adi
-from panel.ayristirma import (openalex_ayristir, personel_ayristir, satirlari_oku,
+from yayin_paneli.analiz import Panel
+from yayin_paneli.aylik import AdjunctPanel, ay_ayristir, donem_adi
+from yayin_paneli.ayristirma import (openalex_ayristir, personel_ayristir, satirlari_oku,
                               scopus_ayristir, sjr_ayristir, wos_ayristir)
-from panel.depo import Depo
+from yayin_paneli.depo import Depo
 
 st.set_page_config(page_title="Yayın Paneli", page_icon="📑", layout="wide")
 

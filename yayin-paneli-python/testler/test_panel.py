@@ -5,9 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from panel.analiz import Panel, adjunct_satiri_coz, bildiri_mi  # noqa: E402
-from panel.aylik import AdjunctPanel, donem_coz, kimlik_uret, quartile_coz  # noqa: E402
-from panel.metin import (ad_eslesiyor_mu, fonetik, sade, sayiya_cevir,  # noqa: E402
+from yayin_paneli.analiz import Panel, adjunct_satiri_coz, bildiri_mi  # noqa: E402
+from yayin_paneli.aylik import AdjunctPanel, donem_coz, kimlik_uret, quartile_coz  # noqa: E402
+from yayin_paneli.metin import (ad_eslesiyor_mu, fonetik, sade, sayiya_cevir,  # noqa: E402
                          yazar_adi_coz)
 
 

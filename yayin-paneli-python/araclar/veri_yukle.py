@@ -14,10 +14,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from panel.aylik import ay_ayristir, donem_adi  # noqa: E402
-from panel.ayristirma import (openalex_ayristir, personel_ayristir, satirlari_oku,  # noqa: E402
+from yayin_paneli.aylik import ay_ayristir, donem_adi  # noqa: E402
+from yayin_paneli.ayristirma import (openalex_ayristir, personel_ayristir, satirlari_oku,  # noqa: E402
                               scopus_ayristir, sjr_ayristir, wos_ayristir)
-from panel.depo import Depo  # noqa: E402
+from yayin_paneli.depo import Depo  # noqa: E402
 
 
 def main() -> None:
