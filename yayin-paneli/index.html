@@ -3020,8 +3020,12 @@
     });
   }
 
+  /**
+   * Listede kaydı olan her akademik personel sayılır: yıl içinde ayrılanlar da
+   * o yıl çalıştığı için paydaya girer.
+   */
   const personelSayisi = (senaryo) => {
-    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    const kisiler = personelDizini().filter((k) => k.akademik);
     return senaryo === "A" ? kisiler.length + durum.adjunct.length : kisiler.length;
   };
 
@@ -3135,8 +3139,9 @@
       if (sa || sb) satirlar.push([ad, sa, sb, sb - sa]);
     }
     kTablo({ basliklar: ["Gösterge", "A: adjunct dahil", "B: hariç", "Değişim"], satirlar, genisIlk: 260 });
-    $("kGorunumNotu").textContent = "Personel sayısı: çıkış tarihi boş olan akademik personel "
-      + "(A senaryosunda adjunct isimler eklenir). Yayın sayıları benzersiz kayıttır; "
+    $("kGorunumNotu").textContent = "Personel sayısı: listedeki tüm akademik personel "
+      + "(yıl içinde ayrılanlar dahil; A senaryosunda adjunct isimler eklenir). "
+      + "Yayın sayıları benzersiz kayıttır; "
       + "kişi bazlı tablolarda her yayın, yayındaki her kurum yazarı için ayrı sayılır. "
       + "Bildiriler (proceedings paper) analiz dışıdır. "
       + "Atıf, WoS \"Times Cited, All Databases\" sütunundan gelir.";
@@ -3149,7 +3154,7 @@
   };
 
   function fakulteCiz() {
-    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    const kisiler = personelDizini().filter((k) => k.akademik);
     const kayitlar = suzulmus();
     const adjunctBirim = adjunctFakultesi();
     const adjunctSayisi = durum.senaryo === "A" ? durum.adjunct.length : 0;
@@ -3168,7 +3173,9 @@
       satirlar, genisIlk: 260 });
     const eslesmeyen = kayitlar.filter((k) => !k.eslesen.length
       && !(durum.senaryo === "A" && k.adjunctVar)).length;
-    $("kGorunumNotu").textContent = "Ortak yazarlık nedeniyle bir yayın birden fazla fakülteye "
+    $("kGorunumNotu").textContent = "Personel sayısı listedeki tüm akademik kayıtlardır; yıl "
+      + "içinde ayrılanlar da o yıl çalıştığı için sayılır. "
+      + "Ortak yazarlık nedeniyle bir yayın birden fazla fakülteye "
       + "sayılabilir; satır toplamı genel toplamı aşabilir. "
       + (durum.senaryo === "A"
         ? `A senaryosunda ${durum.adjunct.length} adjunct ve onların yayınları ${adjunctBirim} satırına eklenir. `
@@ -3375,7 +3382,7 @@
       ...(metrikVar ? ["", ""] : [])];
     kTablo({ basliklar, satirlar, toplam, genisIlk: 230, metinSutunlari: [1, 2, 3] });
 
-    const kisiler = personelDizini().filter((k) => k.aktif && k.akademik);
+    const kisiler = personelDizini().filter((k) => k.akademik);
     const personelli = gruplar.filter((g) => g.durum.includes("Personel"));
     const eksik = gruplar.filter((g) => g.durum === "Listede yok");
     const toplamEslesme = gruplar.reduce((t, g) => t + g.yayin, 0);
@@ -3384,7 +3391,7 @@
       + `${personelli.length} personel listesinde, ${gruplar.filter((g) => g.durum === "Adjunct").length} adjunct, `
       + `${eksik.length} listede yok (ayrılmış ya da emekli olabilir — `
       + `${eksik.reduce((t, g) => t + g.yayin, 0)} yayın). `
-      + `Aktif akademik personel ${kisiler.length} kişi; bunlardan `
+      + `Listedeki akademik personel ${kisiler.length} kişi; bunlardan `
       + `${personelli.filter((g) => g.durum === "Personel").length} kişi bu dönemde yayın yapmış. `
       + `En üretken 10 yazar toplam eşleşmelerin ${yuzde(ilk(10), toplamEslesme)} kadarını, `
       + `ilk 20 yazar ${yuzde(ilk(20), toplamEslesme)} kadarını karşılıyor. `
@@ -3513,7 +3520,7 @@
       alan: alanCiz };
     (ciziciler[durum.gorunum] || ozetCiz)();
     $("kPersonelNotu").textContent = durum.personel.length
-      ? `${durum.personel.length} personel satırı yüklü; ${personelDizini().filter((k) => k.aktif && k.akademik).length} aktif akademik personel sayılıyor.`
+      ? `${durum.personel.length} personel satırı yüklü; ${personelDizini().filter((k) => k.akademik).length} akademik personel sayılıyor.`
       : "Personel listesi yüklenmedi: fakülte, unvan ve kişi bazlı tablolar boş kalır.";
   }
 

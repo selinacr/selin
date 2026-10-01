@@ -280,8 +280,10 @@ class Panel:
         return secili
 
     def personel_sayisi(self, senaryo: str = "A") -> int:
-        aktif = [k for k in personel_dizini(self.personel) if k.aktif and k.akademik]
-        return len(aktif) + (len(self.adjunct) if senaryo == "A" else 0)
+        """Listede kaydı olan her akademik personel sayılır; yıl içinde ayrılanlar da
+        o yıl çalıştığı için dışarıda bırakılmaz."""
+        kisiler = [k for k in personel_dizini(self.personel) if k.akademik]
+        return len(kisiler) + (len(self.adjunct) if senaryo == "A" else 0)
 
     # --- tablolar ----------------------------------------------------
     def ozet(self, yil: str = "tumu") -> pd.DataFrame:
@@ -379,7 +381,7 @@ class Panel:
         return pd.DataFrame(satirlar)
 
     def fakulte(self, senaryo: str = "A", yil: str = "tumu") -> tuple[pd.DataFrame, str]:
-        kisiler = [k for k in personel_dizini(self.personel) if k.aktif and k.akademik]
+        kisiler = [k for k in personel_dizini(self.personel) if k.akademik]
         kayitlar = self.suzulmus(senaryo, yil)
         adjunct_birim = next((f.fakulte for f in kisiler if re.search("muhendis", sade(f.fakulte))),
                              "Mühendislik Fakültesi")
@@ -399,7 +401,9 @@ class Panel:
             })
         cerceve = pd.DataFrame(satirlar).sort_values("Yayın/kişi", ascending=False, ignore_index=True)
         eslesmeyen = sum(1 for k in kayitlar if not k["eslesen"] and not (senaryo == "A" and k["adjunct_var"]))
-        not_metni = ("Ortak yazarlık nedeniyle bir yayın birden fazla fakülteye sayılabilir. "
+        not_metni = ("Personel sayısı listedeki tüm akademik kayıtlardır; yıl içinde ayrılanlar "
+                     "da o yıl çalıştığı için sayılır. "
+                     "Ortak yazarlık nedeniyle bir yayın birden fazla fakülteye sayılabilir. "
                      f"A senaryosunda {len(self.adjunct)} adjunct ve yayınları {adjunct_birim} satırına eklenir. "
                      f"{eslesmeyen} yayın hiçbir personel kaydıyla eşleşmedi.")
         return cerceve, not_metni
@@ -490,11 +494,11 @@ class Panel:
                    .sort_values("Yayın", ascending=False, ignore_index=True)) if satirlar \
             else pd.DataFrame(columns=sutunlar)
         eksik = [s for s in satirlar if s["Durum"] == "Listede yok"]
-        aktif = [k for k in kisiler if k.aktif and k.akademik]
+        aktif = [k for k in kisiler if k.akademik]
         not_metni = (f"{len(satirlar)} farklı kurum adresli yazar: "
                      f"{sum(1 for s in satirlar if 'Personel' in s['Durum'])} personel listesinde, "
                      f"{sum(1 for s in satirlar if s['Durum'] == 'Adjunct')} adjunct, "
-                     f"{len(eksik)} listede yok. Aktif akademik personel {len(aktif)} kişi. "
+                     f"{len(eksik)} listede yok. Listedeki akademik personel {len(aktif)} kişi. "
                      "Bir yayın, yayındaki her kurum yazarı için ayrı sayılır.")
         return cerceve, not_metni
 
