@@ -1,0 +1,251 @@
+/* Yayın Paneli — tema belirteçleri ve düzen.
+   Renkler rol adlarıyla kullanılır; koyu mod ayrı seçilmiş adımlardan gelir. */
+
+:root {
+  color-scheme: light;
+  --plane:           #f9f9f7;
+  --surface:         #fcfcfb;
+  --surface-2:       #f2f2ef;
+  --ink:             #0b0b0b;
+  --ink-2:           #52514e;
+  --ink-muted:       #898781;
+  --cizgi:           #e1e0d9;
+  --eksen:           #c3c2b7;
+  --kenar:           rgba(11, 11, 11, .10);
+  --golge:           0 1px 2px rgba(11, 11, 11, .05), 0 8px 24px rgba(11, 11, 11, .05);
+
+  /* kaynak kimliği (kategorik slot 1-2) */
+  --wos:             #2a78d6;
+  --scopus:          #eb6834;
+
+  /* çeyreklik: tek hue, sıralı (Q1 koyu → Q4 açık) */
+  --q1:              #1c5cab;
+  --q2:              #2a78d6;
+  --q3:              #5598e7;
+  --q4:              #86b6ef;
+  --q-yok:           #c3c2b7;
+
+  --iyi:             #0ca30c;
+  --uyari:           #fab219;
+  --kritik:          #d03b3b;
+
+  --r:               12px;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19; --surface-2: #232322;
+    --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
+    --cizgi: #2c2c2a; --eksen: #383835; --kenar: rgba(255, 255, 255, .10);
+    --golge: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+    --wos: #3987e5; --scopus: #d95926;
+    --q1: #184f95; --q2: #256abf; --q3: #3987e5; --q4: #6da7ec; --q-yok: #383835;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d; --surface: #1a1a19; --surface-2: #232322;
+  --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
+  --cizgi: #2c2c2a; --eksen: #383835; --kenar: rgba(255, 255, 255, .10);
+  --golge: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+  --wos: #3987e5; --scopus: #d95926;
+  --q1: #184f95; --q2: #256abf; --q3: #3987e5; --q4: #6da7ec; --q-yok: #383835;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--wos); }
+
+/* --- üst çubuk ---------------------------------------------------- */
+header.ust {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--plane) 85%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--cizgi);
+}
+
+.marka { display: flex; flex-direction: column; margin-right: auto; }
+.marka b { font-size: 15px; letter-spacing: -.01em; }
+.marka span { color: var(--ink-muted); font-size: 12px; }
+
+.durum-cipi {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--kenar);
+  color: var(--ink-2); font-size: 12px;
+}
+.durum-cipi .nokta { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-muted); }
+.durum-cipi.tamam .nokta { background: var(--iyi); }
+.durum-cipi.hata   .nokta { background: var(--kritik); }
+.durum-cipi.bekler .nokta { background: var(--uyari); }
+
+/* --- filtre satırı (grafiklerin üstünde tek sıra) ----------------- */
+.filtreler {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  padding: 12px 16px 0;
+}
+
+.segment {
+  display: inline-flex; padding: 2px; gap: 2px;
+  background: var(--surface-2); border: 1px solid var(--kenar); border-radius: 10px;
+}
+.segment button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2);
+  padding: 6px 12px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.segment button[aria-pressed="true"] {
+  background: var(--surface); color: var(--ink); box-shadow: var(--golge);
+}
+.segment button:focus-visible { outline: 2px solid var(--wos); outline-offset: 1px; }
+
+select, input[type="search"], input[type="text"], input[type="number"] {
+  appearance: none; font: inherit; font-size: 13px;
+  padding: 7px 10px; border-radius: 10px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--kenar);
+}
+input[type="search"] { min-width: 220px; }
+
+button.dugme {
+  appearance: none; font: inherit; font-size: 13px; cursor: pointer;
+  padding: 7px 12px; border-radius: 10px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--kenar);
+}
+button.dugme:hover { background: var(--surface-2); }
+button.dugme.vurgulu { background: var(--wos); border-color: transparent; color: #fff; }
+
+/* --- sekmeler ----------------------------------------------------- */
+nav.sekmeler {
+  display: flex; gap: 4px; overflow-x: auto;
+  padding: 12px 16px 0; border-bottom: 1px solid var(--cizgi);
+}
+nav.sekmeler button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2);
+  padding: 8px 12px; border-radius: 8px 8px 0 0; font: inherit; font-size: 13px;
+  cursor: pointer; white-space: nowrap; border-bottom: 2px solid transparent;
+}
+nav.sekmeler button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--wos); }
+nav.sekmeler .rozet {
+  margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  background: var(--uyari); color: #0b0b0b; font-size: 11px; font-weight: 600;
+}
+
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+
+/* --- kartlar ------------------------------------------------------ */
+.kutular { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+
+.kutu, .kart {
+  background: var(--surface); border: 1px solid var(--kenar);
+  border-radius: var(--r); box-shadow: var(--golge);
+}
+.kutu { padding: 14px 16px; }
+.kutu .etiket { color: var(--ink-muted); font-size: 12px; text-transform: none; }
+.kutu .deger { font-size: 28px; line-height: 1.1; margin-top: 4px; letter-spacing: -.02em; }
+.kutu .alt { color: var(--ink-2); font-size: 12px; margin-top: 4px; }
+
+.kart { padding: 16px; margin-top: 16px; }
+.kart > h2 { margin: 0 0 2px; font-size: 14px; letter-spacing: -.01em; }
+.kart > p.aciklama { margin: 0 0 12px; color: var(--ink-muted); font-size: 12px; }
+.kart .notu { margin: 10px 0 0; color: var(--ink-muted); font-size: 12px; }
+
+.ikili { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
+
+/* --- tablolar ----------------------------------------------------- */
+.tablo-sarmal { overflow: auto; max-height: 560px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface); color: var(--ink-muted);
+  text-align: left; font-weight: 500; white-space: nowrap;
+  padding: 8px 10px; border-bottom: 1px solid var(--cizgi);
+}
+tbody td {
+  padding: 7px 10px; border-bottom: 1px solid var(--cizgi);
+  font-variant-numeric: tabular-nums;
+}
+tbody td:first-child { font-variant-numeric: normal; }
+tbody tr:hover td { background: var(--surface-2); }
+td.sayi, th.sayi { text-align: right; }
+
+/* --- grafikler ---------------------------------------------------- */
+.grafik { position: relative; }
+.grafik svg { display: block; width: 100%; height: auto; overflow: visible; }
+.grafik .izgara { stroke: var(--cizgi); stroke-width: 1; }
+.grafik .eksen-cizgi { stroke: var(--eksen); stroke-width: 1; }
+.grafik text { fill: var(--ink-muted); font-size: 11px; }
+.grafik text.deger { fill: var(--ink-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.grafik .cubuk { stroke: var(--surface); stroke-width: 2; }
+.grafik .cizgi { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.grafik .nokta { stroke: var(--surface); stroke-width: 2; }
+.grafik .hedef { fill: transparent; cursor: crosshair; }
+.grafik .imlec { stroke: var(--eksen); stroke-width: 1; stroke-dasharray: 3 3; }
+
+.ipucu {
+  position: absolute; z-index: 5; pointer-events: none; opacity: 0;
+  transform: translate(-50%, -115%); transition: opacity .1s;
+  padding: 8px 10px; border-radius: 10px; min-width: 150px;
+  background: var(--surface); border: 1px solid var(--kenar); box-shadow: var(--golge);
+  font-size: 12px; color: var(--ink);
+}
+.ipucu.acik { opacity: 1; }
+.ipucu b { display: block; margin-bottom: 4px; }
+.ipucu .satir { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.ipucu .satir span.ad { display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.ipucu .kare { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.ipucu .sayi { font-variant-numeric: tabular-nums; }
+
+.gosterge { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.gosterge span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 12px; }
+.gosterge .kare { width: 10px; height: 10px; border-radius: 3px; }
+
+/* --- onay kuyruğu ------------------------------------------------- */
+.onay-satir {
+  display: grid; gap: 10px; align-items: center; padding: 12px 0;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 2fr) auto auto;
+  border-bottom: 1px solid var(--cizgi);
+}
+.onay-satir .ham { font-weight: 600; }
+.onay-satir .meta { color: var(--ink-muted); font-size: 12px; }
+
+/* --- kişi analizi ------------------------------------------------- */
+.kisi-liste { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.kisi-dugme {
+  text-align: left; padding: 12px 14px; border-radius: var(--r); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--kenar); color: inherit; font: inherit;
+}
+.kisi-dugme:hover { border-color: var(--wos); }
+.kisi-dugme b { display: block; font-size: 14px; }
+.kisi-dugme span { color: var(--ink-muted); font-size: 12px; }
+
+.bos {
+  padding: 28px; text-align: center; color: var(--ink-muted);
+  border: 1px dashed var(--cizgi); border-radius: var(--r);
+}
+
+.gizli { display: none !important; }
+
+@media (max-width: 640px) {
+  main { padding: 12px; }
+  .onay-satir { grid-template-columns: 1fr; }
+  .kutu .deger { font-size: 24px; }
+  input[type="search"] { min-width: 140px; }
+}
+
+/* filtre satırındaki etiketler girdi kutusuyla aynı ölçekte kalsın */
+.filtreler label {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--ink-2); font-size: 13px;
+}

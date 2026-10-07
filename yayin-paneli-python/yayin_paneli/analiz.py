@@ -382,9 +382,10 @@ class Panel:
         return pd.DataFrame(satirlar)
 
     def quartile(self, yil: str = "tumu") -> tuple[pd.DataFrame, str]:
+        """Bildiriler analiz dışı olduğu için tabloda "Bildiri" satırı yer almaz."""
         a, b = self.suzulmus("A", yil), self.suzulmus("B", yil)
         satirlar = []
-        for q in Q_SIRASI:
+        for q in Q_SIRASI[:5]:
             sa = sum(1 for k in a if k["q"] == q)
             sb = sum(1 for k in b if k["q"] == q)
             satirlar.append({
@@ -401,10 +402,14 @@ class Panel:
         eslemeler = ", ".join(f"{y} → {self.quartile_yili(kaynak, y)}"
                               for y in sorted({k["yil"] for k in a if k["yil"]})
                               if self.quartile_yili(kaynak, y))
-        not_metni = (
-            f"Sınıflandırılabilen yayınlarda Q1 payı — A: %{100 * q1a / siniflanan_a:.1f}"
-            f", B: %{100 * q1b / siniflanan_b:.1f}. " if siniflanan_a and siniflanan_b else ""
-        ).replace(".", ",") + (f"Yayın yılı → liste yılı: {eslemeler}." if eslemeler else "")
+        parcalar = []
+        if siniflanan_a and siniflanan_b:
+            pay_a = f"{100 * q1a / siniflanan_a:.1f}".replace(".", ",")
+            pay_b = f"{100 * q1b / siniflanan_b:.1f}".replace(".", ",")
+            parcalar.append(f"Sınıflandırılabilen yayınlarda Q1 payı — A: %{pay_a}, B: %{pay_b}.")
+        if eslemeler:
+            parcalar.append(f"Yayın yılı → {kaynak} metrik yılı: {eslemeler}.")
+        not_metni = " ".join(parcalar)
         return pd.DataFrame(satirlar), not_metni
 
     def indeks(self, yil: str = "tumu") -> pd.DataFrame:
@@ -515,10 +520,11 @@ class Panel:
                     continue
                 grup = gruplar.setdefault(anahtar, {"Kişi": etiketler.get(anahtar, ham_ad),
                                                     "Yayın": 0,
-                                                    **{f"WoS {q}": 0 for q in Q_SIRASI[:4]},
-                                                    **{f"Scopus {q}": 0 for q in Q_SIRASI[:4]}})
+                                                    **{f"{o} {q}": 0 for q in Q_SIRASI[:4]
+                                                       for o in ("WoS", "Scopus", "Devralınan")}})
                 grup["Yayın"] += 1
-                for onek, alan in (("WoS", "q_wos"), ("Scopus", "q_scopus")):
+                for onek, alan in (("WoS", "q_wos"), ("Scopus", "q_scopus"),
+                                   ("Devralınan", "q_devralinan")):
                     q = kayit.get(alan)
                     if q in Q_SIRASI[:4]:
                         grup[f"{onek} {q}"] += 1
@@ -529,19 +535,24 @@ class Panel:
     def quartile_karsilastirma(self, senaryo: str = "A", yil: str = "tumu") -> pd.DataFrame:
         """Aynı yayın kümesinin WoS ve Scopus çeyrekliklerini yan yana verir."""
         kayitlar = self.suzulmus(senaryo, yil)
+
+        def sayim(alan: str, q: str) -> int:
+            hedef = q if q in Q_SIRASI[:4] else None
+            return sum(1 for k in kayitlar
+                       if (k.get(alan) == hedef if hedef else k.get(alan) in ("—", None)))
+
+        def pay(adet: int) -> str:
+            return f"%{100 * adet / len(kayitlar):.1f}".replace(".", ",") if kayitlar else "·"
+
         satirlar = []
         for q in Q_SIRASI[:4] + ["Sınıflandırılamayan"]:
-            hedef = q if q in Q_SIRASI[:4] else None
-            wos = sum(1 for k in kayitlar if (k.get("q_wos") == hedef if hedef
-                                              else k.get("q_wos") in ("—", None)))
-            scopus = sum(1 for k in kayitlar if (k.get("q_scopus") == hedef if hedef
-                                                 else k.get("q_scopus") in ("—", None)))
+            wos, scopus = sayim("q_wos", q), sayim("q_scopus", q)
             satirlar.append({
-                "Çeyreklik": q, "WoS (JCR)": wos,
-                "WoS payı": f"%{100 * wos / len(kayitlar):.1f}".replace(".", ",") if kayitlar else "·",
-                "Scopus (CiteScore/SJR)": scopus,
-                "Scopus payı": f"%{100 * scopus / len(kayitlar):.1f}".replace(".", ",") if kayitlar else "·",
+                "Çeyreklik": q,
+                "WoS (JCR)": wos, "WoS payı": pay(wos),
+                "Scopus (CiteScore/SJR)": scopus, "Scopus payı": pay(scopus),
                 "Fark": wos - scopus,
+                "Devralınan liste": sayim("q_devralinan", q),
             })
         return pd.DataFrame(satirlar)
 

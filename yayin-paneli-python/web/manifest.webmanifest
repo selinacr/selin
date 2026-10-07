@@ -1,0 +1,16 @@
+{
+  "name": "Doğuş Üniversitesi Yayın Paneli",
+  "short_name": "Yayın Paneli",
+  "description": "WoS ve Scopus verileriyle kurum yayın analizi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f9f9f7",
+  "theme_color": "#1c5cab",
+  "lang": "tr",
+  "dir": "ltr",
+  "icons": [
+    { "src": "simge.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "simge.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

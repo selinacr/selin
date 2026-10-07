@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yayın Paneli</title>
+<meta name="description" content="Doğuş Üniversitesi yayın analiz paneli — WoS ve Scopus">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="simge.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="simge.svg">
+<link rel="stylesheet" href="stil.css">
+</head>
+<body>
+
+<header class="ust">
+  <div class="marka">
+    <b>Doğuş Üniversitesi Yayın Paneli</b>
+    <span id="altbilgi">yükleniyor…</span>
+  </div>
+  <div class="durum-cipi" id="senk-cipi"><i class="nokta"></i><span>senkron</span></div>
+  <button class="dugme" id="senk-dugmesi">Şimdi senkronize et</button>
+  <button class="dugme" id="tema-dugmesi" title="Koyu / açık tema">Tema</button>
+</header>
+
+<div class="filtreler">
+  <div class="segment" id="kaynak-secici" role="group" aria-label="Veri kaynağı">
+    <button data-deger="hepsi" aria-pressed="true">Birleşik</button>
+    <button data-deger="WoS" aria-pressed="false">Yalnız WoS</button>
+    <button data-deger="Scopus" aria-pressed="false">Yalnız Scopus</button>
+    <button data-deger="ortak" aria-pressed="false">Her iki veritabanında</button>
+  </div>
+  <div class="segment" id="senaryo-secici" role="group" aria-label="Senaryo">
+    <button data-deger="A" aria-pressed="true">Adjunct dahil</button>
+    <button data-deger="B" aria-pressed="false">Adjunct hariç</button>
+  </div>
+  <label>Yıl <select id="yil-secici"><option value="tumu">Tümü</option></select></label>
+  <input type="search" id="arama" placeholder="Kişi, dergi ya da fakülte ara">
+</div>
+
+<nav class="sekmeler" id="sekmeler" role="tablist"></nav>
+
+<main id="govde">
+  <div class="bos">Veriler yükleniyor…</div>
+</main>
+
+<script src="grafik.js"></script>
+<script src="uygulama.js"></script>
+</body>
+</html>
