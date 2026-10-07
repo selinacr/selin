@@ -5,6 +5,7 @@
     python -m PyInstaller paketle/yayin-paneli.spec --noconfirm
 """
 
+import sys
 from pathlib import Path
 
 KOK = Path(SPECPATH).parent
@@ -46,6 +47,11 @@ exe = EXE(
     console=True,          # hata olursa kullanıcı görebilsin
     disable_windowed_traceback=False,
     upx=False,
+    # macOS'ta imzasız ikili hiç çalışmaz; ad-hoc imza (-) PyInstaller tarafından
+    # her ikiliye tek tek atılır. Sonradan "codesign --deep" ile üzerine yazmak
+    # iç imzaları bozduğu için yapılmamalı.
+    codesign_identity="-" if sys.platform == "darwin" else None,
+    entitlements_file=None,
 )
 
 toplama = COLLECT(

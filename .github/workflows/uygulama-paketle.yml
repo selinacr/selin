@@ -40,10 +40,11 @@ jobs:
       - name: Mac — .app paketini sıkıştır
         if: matrix.ad == 'mac'
         run: |
-          # Apple Developer sertifikasi olmadigi icin ad-hoc imza atilir. Internetten
-          # indirilen imzasiz uygulamayi Gatekeeper yine de engeller; zip'e konan
-          # "Kur.command" karantina bayragini kaldirip uygulamayi acar.
-          codesign --force --deep --sign - "dist/Yayin Paneli.app" || true
+          # PyInstaller her ikiliye ad-hoc imza atti (spec icinde codesign_identity="-").
+          # Uzerine "codesign --deep" atmak ic imzalari bozdugu icin yalnizca paketin
+          # kendisi imzalanir ve sonuc dogrulanir.
+          codesign --force --sign - --timestamp=none "dist/Yayin Paneli.app"
+          codesign --verify --verbose=2 "dist/Yayin Paneli.app"
           cp paketle/Kur.command "dist/Kur.command"
           chmod +x "dist/Kur.command"
           # Duz metin dosyasi Gatekeeper tarafindan engellenmez; komut orada yazili.
