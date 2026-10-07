@@ -1,9 +1,8 @@
 const { app, BrowserWindow, Menu, shell } = require("electron");
 
-// Panelin adresi. Panel başka bir artifact'a taşınırsa burayı ya da
-// YAYIN_PANELI_URL ortam değişkenini güncellemek yeterli.
-const PANEL_ADRESI =
-  process.env.YAYIN_PANELI_URL || "https://claude.ai/artifact/3k8D6RZzcr8Ca2rB6kt4PW";
+// Panelin adresi. Varsayılan olarak bu makinede çalışan yerel servise bağlanır
+// (python -m yayin_paneli.servis). Başka bir adres için YAYIN_PANELI_URL kullanın.
+const PANEL_ADRESI = process.env.YAYIN_PANELI_URL || "http://127.0.0.1:8787/";
 
 // Oturumun kalıcı olması için ayrı bir partition: bir kez giriş yapınca
 // uygulama her açıldığında oturum açık gelir.
@@ -32,9 +31,9 @@ function pencereAc() {
   // Claude'un kendi alan adı uygulama içinde kalsın.
   const iceride = (adres) => {
     try {
-      const alan = new URL(adres).hostname;
-      return alan === "claude.ai" || alan.endsWith(".claude.ai") ||
-        alan.endsWith(".anthropic.com") || alan === "accounts.google.com";
+      const { hostname } = new URL(adres);
+      const panel = new URL(PANEL_ADRESI).hostname;
+      return hostname === panel || hostname === "127.0.0.1" || hostname === "localhost";
     } catch {
       return false;
     }

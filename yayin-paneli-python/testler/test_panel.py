@@ -105,21 +105,59 @@ def test_ad_eslestirmesi_farkli_yazimi_birlestirir():
     assert zengin[0]["adjunct_var"]
 
 
+def dergi_metrik(kaynak, yil, issn, q, dergi=""):
+    return {"kaynak": kaynak, "yil": yil, "issn": issn, "dergi": dergi, "kategori": "", "q": q}
+
+
 def test_ceyreklik_yil_yedegi():
-    panel = Panel(kayitlar=[kayit(yil=2026, issn="11112222")],
-                  quartiller={2024: {"11112222": "Q2"}, 2025: {"11112222": "Q1"}})
+    panel = Panel(kayitlar=[kayit(yil=2026, issn="11112222")], dergi_metrikleri=[
+        dergi_metrik("WoS", 2024, "11112222", "Q2"),
+        dergi_metrik("WoS", 2025, "11112222", "Q1"),
+    ])
     zengin, _ = panel.zenginlestir()
-    assert zengin[0]["q"] == "Q1"          # 2026 için en yakın önceki liste 2025
-    assert panel.quartile_yili(2026) == 2025
+    assert zengin[0]["q"] == "Q1"          # 2026 için en yakın önceki metrik yılı 2025
+    assert panel.quartile_yili("WoS", 2026) == 2025
 
 
 def test_issn_yoksa_dergi_adindan_ceyreklik():
     panel = Panel(kayitlar=[
         kayit(id="a", doi="10.1/a", issn="11112222", dergi="Nature"),
         kayit(id="b", doi="10.1/b", issn="", dergi="Nature", kaynak="Scopus"),
-    ], quartiller={2025: {"11112222": "Q1"}})
+    ], dergi_metrikleri=[dergi_metrik("WoS", 2025, "11112222", "Q1")])
     zengin, _ = panel.zenginlestir()
     assert {k["q"] for k in zengin} == {"Q1"}
+
+
+def test_q_kaynak_bazinda_ayri_tutulur():
+    """Aynı dergi iki kaynakta farklı çeyreklikte olabilir; ikisi de saklanır."""
+    panel = Panel(kayitlar=[
+        kayit(id="w", doi="10.1/a", issn="11112222"),
+        kayit(id="s", doi="10.1/a", issn="11112222", kaynak="Scopus"),
+    ], dergi_metrikleri=[
+        dergi_metrik("WoS", 2025, "11112222", "Q1"),
+        dergi_metrik("Scopus", 2025, "11112222", "Q2"),
+    ])
+    (zengin,), _ = panel.zenginlestir()
+    assert zengin["q_wos"] == "Q1" and zengin["q_scopus"] == "Q2"
+    assert zengin["q"] == "Q1" and zengin["q_kaynagi"] == "WoS"
+
+    panel.kaynak_secimi = "Scopus"
+    panel._q_bellek = None
+    (zengin,), _ = panel.zenginlestir()
+    assert zengin["q"] == "Q2" and zengin["q_kaynagi"] == "Scopus"
+
+
+def test_devralinan_liste_yalnizca_bosluk_doldurur():
+    """WoS/Scopus metriği gelene kadar eski liste kullanılır, geldiğinde devredilir."""
+    panel = Panel(kayitlar=[kayit(issn="11112222")],
+                  dergi_metrikleri=[dergi_metrik("miras", 2025, "11112222", "Q3")])
+    (zengin,), _ = panel.zenginlestir()
+    assert zengin["q"] == "Q3" and zengin["q_kaynagi"] == "devralınan"
+
+    panel.dergi_metrikleri.append(dergi_metrik("WoS", 2025, "11112222", "Q1"))
+    panel._q_bellek = None
+    (zengin,), _ = panel.zenginlestir()
+    assert zengin["q"] == "Q1" and zengin["q_kaynagi"] == "WoS"
 
 
 def test_senaryo_b_adjunct_yayinlarini_cikarir():
@@ -131,13 +169,19 @@ def test_senaryo_b_adjunct_yayinlarini_cikarir():
     assert len(panel.suzulmus("B")) == 1
 
 
-def test_metrikler_ayni_kisiyi_birlestirir():
+def test_metrikler_ayni_kisiyi_kaynak_bazinda_birlestirir():
+    """Aynı kişinin birden çok profili toplanır; WoS ve Scopus ayrı tutulur."""
     panel = Panel(kayitlar=[kayit(kurum_yazarlari=["Pamucar, Dragan"])], adjunct=["Dragan Pamucar"],
-                  metrikler=[{"ad": "Dragan Pamučar", "kimlik": "A1", "atif": 30000, "yayin": 700, "h": 84},
-                             {"ad": "Dragan Pamucar", "kimlik": "A2", "atif": 700, "yayin": 70, "h": 16}])
-    metrik = panel.metrik_dizini()
-    (tek,) = metrik.values()
-    assert tek["atif"] == 30700 and tek["h"] == 84 and tek["profil"] == 2
+                  kisi_metrikleri=[
+                      {"kaynak": "WoS", "ad": "Dragan Pamučar", "profil_kimlik": "A1",
+                       "atif": 30000, "yayin": 700, "h": 84},
+                      {"kaynak": "WoS", "ad": "Dragan Pamucar", "profil_kimlik": "A2",
+                       "atif": 700, "yayin": 70, "h": 16},
+                      {"kaynak": "Scopus", "ad": "Pamucar, D.", "profil_kimlik": "S1",
+                       "atif": 25000, "yayin": 650, "h": 79}])
+    (tek,) = panel.metrik_dizini().values()
+    assert tek["WoS"]["atif"] == 30700 and tek["WoS"]["h"] == 84 and tek["WoS"]["profil"] == 2
+    assert tek["Scopus"]["h"] == 79
 
 
 def test_aylik_donem_ve_quartile_cozumu():

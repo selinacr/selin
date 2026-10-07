@@ -141,3 +141,9 @@ def adjunct_varyasyonlari(ham_adlar: list[str], adjunct: list[str]) -> dict[str,
         if eslesen and sade(ham) != sade(eslesen.etiket):
             harita[ham] = eslesen.etiket
     return harita
+
+
+def kuyruga_hazirla_yardimci(depo, ham_adlar: list[str], kaynak: str = "") -> EslesmeSonucu:
+    """Depodaki personel, adjunct ve takma ad listeleriyle `kuyruk_hazirla` çağırır."""
+    return kuyruk_hazirla(ham_adlar, depo.oku("personel"), depo.oku("adjunct"),
+                          depo.takma_adlar(), kaynak)

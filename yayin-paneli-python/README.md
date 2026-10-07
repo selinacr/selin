@@ -1,71 +1,128 @@
-# Yayın Paneli — Python sürümü
+# Doğuş Üniversitesi Yayın Analiz Paneli (sürüm 2)
 
-Web panelinin (Claude artifact) Python karşılığı: aynı ayrıştırma ve eşleştirme
-kuralları, Streamlit arayüzü ve tek dosyalık SQLite veritabanı.
+Kurumun WoS ve Scopus yayınlarını tek yerde toplayan, çeyreklik ve h-indeksi
+analizlerini iki kaynak için ayrı ayrı üreten panel. Mimari ayrıntılar: `MIMARI.md`.
 
 ## Kurulum
 
-```bash
-cd yayin-paneli-python
-pip install -r requirements.txt
-streamlit run app.py
+Anaconda Prompt (ya da herhangi bir terminal) içinde, bu klasörde:
+
+```
+python -m pip install -r requirements.txt
 ```
 
-Tarayıcıda `http://localhost:8501` açılır. Veriler `veri/panel.db` dosyasında
-tutulur; bu dosyayı yedeklemek tüm paneli yedeklemek demektir.
+## Çalıştırma
 
-## Neleri okur
+**Panel (önerilen — PWA arayüzü):**
 
-| Dosya | Nereden |
-| --- | --- |
-| WoS "Full Record" (.xls/.xlsx) | Web of Science → Export → Excel |
-| Scopus dışa aktarımı (.csv) | Scopus → Export → CSV ("Bibliographical information" seçilirse adres ve ISSN de gelir) |
-| Personel listesi (.xlsx) | Kurum akademik personel listesi |
-| SCImago SJR (.csv) | scimagojr.com yıllık dergi listesi (dosya adında yıl olmalı) |
-| OpenAlex yazar metrikleri (.json) | `api.openalex.org/authors?filter=last_known_institutions.id:I129994210&per-page=200` |
-| Adjunct ay dosyası (.xlsx) | Aylık yayın/ödeme tablosu |
-
-## Komut satırından toplu yükleme
-
-```bash
-python araclar/veri_yukle.py \
-  --wos savedrecs*.xls --scopus scopus_export.csv \
-  --personel akademik_personel.xlsx \
-  --sjr scimagojr_2025.csv --metrik authors*.json \
-  --aylik "Agustos 2026.xlsx" --adjunct adjunct.txt
+```
+python -m yayin_paneli.servis
 ```
 
-## Analiz kuralları (web paneliyle aynı)
+Ardından tarayıcıda <http://127.0.0.1:8787/>. Windows'ta `baslat_panel.bat` dosyasına
+çift tıklamak da aynı işi yapar.
 
-- Bildiriler (proceedings paper / conference paper) analiz dışıdır.
-- Aynı yayın hem WoS hem Scopus'ta ise DOI (yoksa başlık) üzerinden tek sayılır;
-  WoS kaydı taban alınır, eksik alanlar Scopus'tan tamamlanır.
-- Çeyreklik ISSN üzerinden SJR listesiyle eşleşir; o yılın listesi yoksa en yakın
-  önceki yıl kullanılır, ISSN yoksa dergi adından tamamlanır.
-- Senaryo A adjunct yayınlarını içerir, B çıkarır. Adjunct satırına
-  `Dragan Pamucar | Scopus` yazılırsa o kişinin yayınları yalnızca o veritabanından sayılır.
-- Ad eşleştirme listesi (`yayındaki yazım = kurumdaki ad`) farklı çeviri yazımları birleştirir;
-  Türkçe/İngilizce yazım farkları (Shahram ↔ Şahram, Minaei ↔ Minayi) otomatik çözülür.
-- Atıf ve h indeksi OpenAlex yazar profillerinden gelir; aynı kişinin birden çok profili
-  varsa atıflar toplanır, h'nin en büyüğü alınır.
+Adres çubuğundaki **Uygulamayı yükle** düğmesiyle panel masaüstüne ya da telefonun
+ana ekranına kurulabilir; çevrimdışı açıldığında son görülen veriler gösterilir.
+
+**Streamlit sürümü (aynı veritabanı, hızlı veri yükleme ekranları):**
+
+```
+python -m streamlit run app.py
+```
+
+**Komut satırından toplu yükleme:**
+
+```
+python araclar/veri_yukle.py --wos savedrecs*.xls --scopus scopus.csv \
+    --personel akademik.xlsx --jcr "JCR 2025.csv" --scopus-kaynak citescore_2025.csv \
+    --wos-yazar researchers.csv --scopus-yazar authors.csv
+python araclar/veri_yukle.py --senk        # WoS + Scopus senkronunu hemen çalıştır
+python araclar/veri_yukle.py --kuyruk      # onay kuyruğunu yeniden hesapla
+```
+
+## Veri kaynakları
+
+Yalnızca **Web of Science** ve **Scopus** kullanılır. Her veri iki yoldan gelebilir:
+
+| Veri | Otomatik | Elle |
+| --- | --- | --- |
+| Yayın kayıtları | WoS Starter API / Scopus Search API | WoS Full Record `.xls`, Scopus `.csv` |
+| Çeyreklik (Q1–Q4) | JCR ve Scopus CiteScore uç noktaları | JCR dışa aktarımı, Scopus Sources `.csv` |
+| h-indeksi, atıf | WoS ve Scopus yazar profilleri | Yazar listesi `.csv` (kaynak seçilerek) |
+
+WoS çeyrekliği **JCR**, Scopus çeyrekliği **CiteScore yüzdelik dilimi** (yoksa SJR)
+üzerinden hesaplanır. Her yayın hem `q_wos` hem `q_scopus` taşır; panelin gösterdiği
+değer üstteki kaynak filtresine göre çözülür.
+
+Sürüm 1'den devralınan eski çeyreklik listesi `devralınan` etiketiyle saklanır ve
+yalnızca iki kaynaktan da değer gelmeyen yayınlarda kullanılır; gerçek değer geldiğinde
+otomatik olarak devreye girer.
+
+## Otomatik toplama
+
+`Senkron` sekmesinden iki yoldan biri seçilir:
+
+**`api` (varsayılan, önerilen).** Resmi API anahtarları kullanılır:
+
+```
+setx WOS_API_KEY "..."
+setx SCOPUS_API_KEY "..."
+setx SCOPUS_AF_ID "60021658"     # kurumun Scopus AF-ID'si (boşsa ad ile aranır)
+```
+
+Kurumsal abonelikte her iki anahtar da ücretsiz alınır ve sağlayıcıların kullanım
+şartlarına uygun yoldur.
+
+**`tarayici`.** Kendi makinenizdeki açık WoS/Scopus oturumu kullanılır:
+
+```
+python -m pip install playwright
+python -m playwright install chromium
+python -m yayin_paneli.toplayici.tarayici giris https://www.webofscience.com
+python -m yayin_paneli.toplayici.tarayici giris https://www.scopus.com
+```
+
+Oturum kalıcı profilde saklanır, sonraki toplamalar otomatik çalışır.
+
+> **Uyarı.** Clarivate ve Elsevier kullanım şartları otomatik erişimi kısıtlar. Bu yol
+> yalnızca kendi makinenizde, kendi oturumunuzla ve kendi sorumluluğunuzda çalıştırılmak
+> üzere yazılmıştır; sunucuya kurulmamalı, paylaşılan bir ortamda kullanılmamalıdır.
+> Mümkün olan her durumda `api` yolu tercih edilmelidir.
+
+Saatlik toplama `Senkron` sekmesindeki düğmeyle açılır; her tur `senk_gunlugu`
+tablosuna yazılır ve üst çubuktaki durum çipinde görünür.
+
+## İsim eşleştirme ve onay kuyruğu
+
+Türkçe–İngilizce yazım farkları (Shahram Minaei ↔ ŞAHRAM MİNAYİ), diyakritikler
+(Pamučar, Šimić) ve kısaltmalar normalleştirilerek eşleştirilir.
+
+- Kesin eşleşme otomatik bağlanır.
+- Şüpheli eşleşme (yalnız soyad tutuyor, baş harf belirsiz, yalnızca fonetik benzerlik)
+  **Onay kuyruğu** sekmesine düşer. Aday seçilip onaylanır ya da «listede yok»
+  işaretlenir; karar takma ad tablosuna yazılır ve bir daha sorulmaz.
+- Adjunct isimlerinin tüm varyasyonları tek çatı etiket altında birleşir.
+
+## Geçerli analiz kuralları
+
+- Bildiriler (proceedings paper / conference paper) analiz dışıdır; sayıları ayrıca
+  raporlanır.
+- Tekilleştirme DOI üzerinden; DOI yoksa başlık + yıl.
+- Personel sayımında listedeki her akademik kayıt sayılır — yıl içinde ayrılanlar da
+  o yıl çalıştığı için paydaya girer.
+- Senaryo A adjunct yayınlarını içerir, B içermez; iki sonuç yan yana verilir.
+- Açık erişim yalnızca var/yok olarak sayılır.
+- Ödeme raporlarında her para birimi ayrı hesaplanır.
+
+## Veritabanı
+
+Tüm veri `veri/panel.db` içinde. Sürüm 1 veritabanı ilk açılışta otomatik göç eder
+(eski `kurum_kayitlari`, `quartiller`, `metrikler` anahtarları tablolara taşınır).
+Yedek almak için bu tek dosyayı kopyalamak yeterlidir.
 
 ## Testler
 
-```bash
+```
 python -m pytest testler -q
 ```
-
-## Web sürümüyle ilişki
-
-İki sürüm bağımsız çalışır: web paneli verisini Claude tarafında, Python sürümü
-`veri/panel.db` içinde tutar. Aynı dosyaları ikisine de yükleyebilirsiniz; sayılar
-aynı çıkar (karşılaştırma: 2022–2026 için 1.312 tekil yayın, Q1 575, 237 kişi
-OpenAlex metriğiyle eşleşir).
-
-## Sık karşılaşılan iki hata
-
-- **`No module named 'panel.analiz'`** — eski sürümü çalıştırıyorsunuz. Klasörde
-  `panel` değil `yayin_paneli` klasörü olmalı; depoyu yeniden indirin.
-- **`numpy.core.multiarray failed to import`** — Anaconda'daki `pyarrow` eski numpy'a
-  göre derlenmiş. `python -m pip install -U pyarrow numpy pandas` komutunu çalıştırıp
-  paneli yeniden başlatın.
