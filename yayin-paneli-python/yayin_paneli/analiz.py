@@ -145,6 +145,9 @@ class Panel:
     kisi_metrikleri: list[dict] = field(default_factory=list)
     takma_adlar: dict[str, str] = field(default_factory=dict)
     kaynak_secimi: str = "hepsi"
+    # Bildiriler (proceedings / conference paper) analize dahil mi? Dahil olduklarında
+    # yayın sayılarına girer ve çeyreklik tablosunda ayrı satır olarak görünürler.
+    bildiri_dahil: bool = True
 
     # --- yardımcılar -------------------------------------------------
     def _esleme_haritasi(self) -> dict[str, str]:
@@ -260,7 +263,8 @@ class Panel:
         for ham in self.kayitlar:
             if bildiri_mi(ham):
                 bildiri += 1
-                continue
+                if not self.bildiri_dahil:
+                    continue
             kaynak = ham.get("kaynak") or "WoS"
             anahtar = (f"d:{sade(ham.get('doi'))}" if ham.get("doi")
                        else f"t:{sade(ham.get('baslik'))[:70]}|{ham.get('yil')}")
@@ -382,10 +386,10 @@ class Panel:
         return pd.DataFrame(satirlar)
 
     def quartile(self, yil: str = "tumu") -> tuple[pd.DataFrame, str]:
-        """Bildiriler analiz dışı olduğu için tabloda "Bildiri" satırı yer almaz."""
+        """Bildiriler dahil edilmişse tabloda ayrı satır olarak görünürler."""
         a, b = self.suzulmus("A", yil), self.suzulmus("B", yil)
         satirlar = []
-        for q in Q_SIRASI[:5]:
+        for q in (Q_SIRASI if self.bildiri_dahil else Q_SIRASI[:5]):
             sa = sum(1 for k in a if k["q"] == q)
             sb = sum(1 for k in b if k["q"] == q)
             satirlar.append({

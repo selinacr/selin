@@ -93,6 +93,18 @@ python araclar/veri_yukle.py --senk        # WoS + Scopus senkronunu hemen çal�
 python araclar/veri_yukle.py --kuyruk      # onay kuyruğunu yeniden hesapla
 ```
 
+## Dışa aktarma ayarları (önemli)
+
+Elle yüklenen dosyalarda eksik alan varsa analiz de eksik çıkar. Doğru sonuç için:
+
+**WoS** — arama sonucunda Export → Excel, **Record Content: Full Record**. Belge türü
+filtresi koymayın: bildiriler de gelsin (aksi hâlde yalnızca Article/Review iner).
+
+**Scopus** — Export → CSV seçtikten sonra alan listesinde **Bibliographical information**
+kutusunu da işaretleyin. Bu kutu işaretlenmezse ISSN ve adres sütunları gelmez; ISSN
+olmayınca çeyreklik yalnızca dergi adından, adres olmayınca kurum yazarları yalnızca ad
+benzerliğinden bulunur.
+
 ## Veri kaynakları
 
 Yalnızca **Web of Science** ve **Scopus** kullanılır. Her veri iki yoldan gelebilir:
@@ -158,8 +170,9 @@ Türkçe–İngilizce yazım farkları (Shahram Minaei ↔ ŞAHRAM MİNAYİ), di
 
 ## Geçerli analiz kuralları
 
-- Bildiriler (proceedings paper / conference paper) analiz dışıdır; sayıları ayrıca
-  raporlanır.
+- Bildiriler (proceedings paper / conference paper) varsayılan olarak **sayılır** ve
+  çeyreklik tablosunda ayrı satır olarak görünür. Üstteki **Bildiriler hariç** düğmesiyle
+  analiz dışı bırakılabilir; o zaman sayıları yalnızca not olarak raporlanır.
 - Tekilleştirme DOI üzerinden; DOI yoksa başlık + yıl.
 - Personel sayımında listedeki her akademik kayıt sayılır — yıl içinde ayrılanlar da
   o yıl çalıştığı için paydaya girer.

@@ -4,6 +4,7 @@
 const DURUM = {
   kaynak: "hepsi",
   senaryo: "A",
+  bildiri: "1",
   yil: "tumu",
   arama: "",
   sekme: "ozet",
@@ -113,7 +114,8 @@ async function durumuYenile() {
 
 async function veriYenile() {
   const adres = `/api/analiz?kaynak=${encodeURIComponent(DURUM.kaynak)}` +
-    `&senaryo=${DURUM.senaryo}&yil=${encodeURIComponent(DURUM.yil)}`;
+    `&senaryo=${DURUM.senaryo}&yil=${encodeURIComponent(DURUM.yil)}` +
+    `&bildiri=${DURUM.bildiri === "1"}`;
   try {
     DURUM.veri = await getir(adres);
     yilSeciciyiDoldur();
@@ -158,7 +160,8 @@ function kutularCiz() {
   const k = DURUM.veri.kutular;
   return `<div class="kutular">
     <div class="kutu"><div class="etiket">Yayın</div><div class="deger">${Grafik.sayiBicim(k.yayin)}</div>
-      <div class="alt">${Grafik.sayiBicim(k.tekil)} tekil kayıt · ${k.bildiri} bildiri analiz dışı</div></div>
+      <div class="alt">${Grafik.sayiBicim(k.tekil)} tekil kayıt · ${k.bildiri} bildiri ${
+        k.bildiri_dahil ? "dahil" : "analiz dışı"}</div></div>
     <div class="kutu"><div class="etiket">Akademik personel</div><div class="deger">${Grafik.sayiBicim(k.personel)}</div>
       <div class="alt">listedeki tüm akademik kayıtlar</div></div>
     <div class="kutu"><div class="etiket">Yayın / kişi</div><div class="deger">${Grafik.sayiBicim(k.kisi_basi)}</div>
@@ -460,6 +463,7 @@ function segmentBagla(secici, alan, sonra) {
 function olaylariBagla() {
   segmentBagla("#kaynak-secici", "kaynak", veriYenile);
   segmentBagla("#senaryo-secici", "senaryo", veriYenile);
+  segmentBagla("#bildiri-secici", "bildiri", veriYenile);
 
   $("#yil-secici").addEventListener("change", (olay) => {
     DURUM.yil = olay.target.value;

@@ -220,3 +220,36 @@ def test_servis_uclari(tmp_path, monkeypatch):
     assert istemci.post("/api/onay/tazele").json()["bekleyen"] == 0
     assert istemci.post("/api/ayarlar", json={"ilk_yil": 2021}).json()["ilk_yil"] == 2021
     assert istemci.post("/api/onay", json={"ham": "x", "durum": "onayli"}).status_code == 400
+
+
+# --- bildiri sayımı --------------------------------------------------------
+def test_bildiriler_istege_bagli_sayilir():
+    """`bildiri_dahil` açıkken bildiriler yayın sayısına girer ve ayrı Q satırı olur."""
+    from yayin_paneli.analiz import Panel
+    kayitlar = [kayit(id="a", doi="10.1/a"),
+                kayit(id="b", doi="10.1/b", belge_turu="Proceedings Paper",
+                      belge_turu_ham="Proceedings Paper")]
+
+    haric = Panel(kayitlar=kayitlar, bildiri_dahil=False)
+    zengin, bildiri = haric.zenginlestir()
+    assert len(zengin) == 1 and bildiri == 1
+    assert "Bildiri" not in haric.quartile()[0]["Çeyreklik"].tolist()
+
+    dahil = Panel(kayitlar=kayitlar, bildiri_dahil=True)
+    zengin, bildiri = dahil.zenginlestir()
+    assert len(zengin) == 2 and bildiri == 1
+    cerceve = dahil.quartile()[0]
+    satir = cerceve[cerceve["Çeyreklik"] == "Bildiri"]
+    assert int(satir["A: dahil"].iloc[0]) == 1
+
+
+def test_servis_bildiri_parametresi(tmp_path):
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+    import yayin_paneli.servis as servis
+    servis.depo = Depo(tmp_path / "bildiri.db")
+    servis.depo.kayitlari_ekle([kayit(id="a", doi="10.1/a"),
+                                kayit(id="b", doi="10.1/b", belge_turu="Proceedings Paper",
+                                      belge_turu_ham="Proceedings Paper")], "WoS")
+    istemci = fastapi_testclient.TestClient(servis.uygulama)
+    assert istemci.get("/api/analiz?bildiri=true").json()["kutular"]["yayin"] == 2
+    assert istemci.get("/api/analiz?bildiri=false").json()["kutular"]["yayin"] == 1

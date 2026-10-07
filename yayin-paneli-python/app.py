@@ -99,6 +99,10 @@ def kurum_ekrani(veri: dict) -> None:
                f"dergi metriği: {len(veri['dergi_metrikleri'])} satır · "
                f"yazar metriği: {len(veri['kisi_metrikleri'])} profil")
 
+    panel.bildiri_dahil = st.checkbox(
+        "Bildiriler (proceedings / conference paper) sayılsın", value=True,
+        help="Kapatılırsa bildiriler analiz dışı bırakılır ve ayrıca raporlanır.")
+
     sekmeler = st.tabs(["Özet", "Yıl bazlı", "Çeyreklik", "WoS ↔ Scopus Q", "İndeks",
                         "Açık erişim", "Fakülte", "Kişi bazlı", "Kişi × Q", "Dergi",
                         "Onay kuyruğu"])

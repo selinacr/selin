@@ -34,7 +34,7 @@ depo = Depo()
 zamanlayici = Zamanlayici(depo)
 
 
-def panel_kur(kaynak: str = "hepsi") -> Panel:
+def panel_kur(kaynak: str = "hepsi", bildiri: bool = True) -> Panel:
     veri = depo.hepsini_oku()
     panel = Panel(kayitlar=veri["kurum_kayitlari"], personel=veri["personel"],
                   adjunct=veri["adjunct"], ad_esleme=veri["ad_esleme"],
@@ -42,6 +42,7 @@ def panel_kur(kaynak: str = "hepsi") -> Panel:
                   dergi_metrikleri=veri["dergi_metrikleri"],
                   kisi_metrikleri=veri["kisi_metrikleri"])
     panel.kaynak_secimi = kaynak if kaynak in ("WoS", "Scopus", "ortak") else "hepsi"
+    panel.bildiri_dahil = bildiri
     return panel
 
 
@@ -82,8 +83,9 @@ def durum() -> dict:
 
 
 @uygulama.get("/api/analiz")
-def analiz(kaynak: str = "hepsi", senaryo: str = "A", yil: str = "tumu") -> dict:
-    panel = panel_kur(kaynak)
+def analiz(kaynak: str = "hepsi", senaryo: str = "A", yil: str = "tumu",
+           bildiri: bool = True) -> dict:
+    panel = panel_kur(kaynak, bildiri)
     if not panel.kayitlar:
         raise HTTPException(404, f"Veritabanında hiç yayın kaydı yok. Okunan dosya: "
                                  f"{depo.yol.resolve()}")
@@ -103,7 +105,7 @@ def analiz(kaynak: str = "hepsi", senaryo: str = "A", yil: str = "tumu") -> dict
             if secili else 0,
             "q1_payi": round(100 * sum(1 for k in siniflanan if k["q"] == "Q1") / len(siniflanan), 1)
             if siniflanan else 0,
-            "tekil": len(zengin), "bildiri": bildiri,
+            "tekil": len(zengin), "bildiri": bildiri, "bildiri_dahil": panel.bildiri_dahil,
         },
         "yillar": sorted({k["yil"] for k in zengin if k["yil"]}),
         "ozet": _tablo(panel.ozet(yil)),
@@ -120,9 +122,10 @@ def analiz(kaynak: str = "hepsi", senaryo: str = "A", yil: str = "tumu") -> dict
 
 
 @uygulama.get("/api/kisi/{ad}")
-def kisi_detayi(ad: str, kaynak: str = "hepsi", senaryo: str = "A") -> dict:
+def kisi_detayi(ad: str, kaynak: str = "hepsi", senaryo: str = "A",
+                bildiri: bool = True) -> dict:
     """Tek kişinin yıl yıl yayınları, çeyreklik dağılımı ve iki kaynaktaki h-indeksi."""
-    panel = panel_kur(kaynak)
+    panel = panel_kur(kaynak, bildiri)
     cerceve, _ = panel.kisi_bazli(senaryo, "tumu")
     if cerceve.empty:
         raise HTTPException(404, "Kişi bulunamadı.")
