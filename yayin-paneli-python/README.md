@@ -113,6 +113,24 @@ aynı yılı yeniden indiğinde o yıl tazelenir, diğer yıllar ve diğer kayna
 Tanınan dosyalar: WoS Full Record, Scopus CSV, JCR çeyreklik, Scopus Sources/CiteScore,
 yazar h-indeksi listesi, personel listesi ve adjunct puantaj tabloları.
 
+### Çeyreklik ve h-indeksi nereden gelir
+
+Yayın dışa aktarımlarında bu ikisi **yoktur**; ayrı listelerden gelirler. **Veri çek**
+sekmesindeki ikinci tabloda hazır bağlantılar var:
+
+| Veri | Kaynak | Sıklık |
+| --- | --- | --- |
+| WoS çeyrekliği | JCR → Journals → Export (JIF Quartile sütunu) | yılda bir |
+| Scopus çeyrekliği | Scopus Sources → "Download Scopus Source List" | yılda bir |
+| WoS / Scopus h-indeksi | Yazar arama → Export (h-index sütunu) | gerektikçe |
+
+Bu listeler gelmeden önce bile kişi bazlı tabloda **h (WoS, veri seti)** ve
+**h (Scopus, veri seti)** kolonları doludur: panelde yüklü yayınların atıf sayılarından
+hesaplanır. Bu, kişinin kariyer boyu h-indeksi değildir — yalnızca buradaki yayınları
+kapsar, bu yüzden daha küçük çıkar. Yazar listesi yüklenince kariyer h'si
+**h (…, profil)** kolonunda yanına gelir; kişi analizi ekranında da o kişinin WoS ve
+Scopus yazar profiline giden bağlantı vardır.
+
 ## Dışa aktarma ayarları (önemli)
 
 Elle yüklenen dosyalarda eksik alan varsa analiz de eksik çıkar. Doğru sonuç için:

@@ -22,7 +22,8 @@ from pydantic import BaseModel
 from .analiz import Panel
 from .depo import Depo
 from .eslesme import kuyrugu_tazele
-from .izleyici import Izleyici, arama_baglantilari, varsayilan_klasor
+from .izleyici import (METRIK_KAYNAKLARI, Izleyici, arama_baglantilari,
+                       varsayilan_klasor, yazar_profili_baglantilari)
 from .toplayici.zamanlayici import Zamanlayici
 
 # Paketlenmiş uygulamada web dosyaları gömülü klasörden gelir.
@@ -145,7 +146,8 @@ def kisi_detayi(ad: str, kaynak: str = "hepsi", senaryo: str = "A",
     q_cerceve = panel.kisi_q_dagilimi(senaryo, "tumu")
     q_satir = q_cerceve[q_cerceve["Kişi"] == satirlar.iloc[0]["Kişi"]] \
         if not q_cerceve.empty else q_cerceve
-    return {"ozet": _tablo(satirlar), "quartile": _tablo(q_satir)}
+    return {"ozet": _tablo(satirlar), "quartile": _tablo(q_satir),
+            "profiller": yazar_profili_baglantilari(satirlar.iloc[0]["Kişi"])}
 
 
 @uygulama.get("/api/onay")
@@ -197,7 +199,9 @@ def baglantilar() -> dict:
     ilk = int(ayarlar.get("ilk_yil") or 2022)
     from datetime import datetime
     yillar = list(range(ilk, datetime.now().year + 2))
-    return {"yillar": arama_baglantilari(ayarlar, yillar), "klasor": str(izleyici.klasor)}
+    return {"yillar": arama_baglantilari(ayarlar, yillar),
+            "metrikler": METRIK_KAYNAKLARI,
+            "klasor": str(izleyici.klasor)}
 
 
 class IzleyiciAyari(BaseModel):

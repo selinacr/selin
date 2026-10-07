@@ -310,19 +310,23 @@ function kisiEkrani() {
   if (!secilen) return liste;
 
   const q = DURUM.veri.kisi_q.satirlar.find((s) => s["Kişi"] === secilen["Kişi"]) || {};
-  const hWos = secilen["h (WoS)"], hScopus = secilen["h (Scopus)"];
+  const hWos = secilen["h (WoS, profil)"] ?? secilen["h (WoS, veri seti)"];
+  const hScopus = secilen["h (Scopus, profil)"] ?? secilen["h (Scopus, veri seti)"];
+  const hKaynagi = secilen["h (WoS, profil)"] != null ? "yazar profilinden"
+                                                      : "panelde yüklü yayınlardan";
   const kutular = `<div class="kutular">
     <div class="kutu"><div class="etiket">Yayın</div><div class="deger">${secilen["Yayın"]}</div>
       <div class="alt">${secilen["Durum"]}</div></div>
     <div class="kutu"><div class="etiket">h-indeksi (WoS)</div>
-      <div class="deger">${hWos ?? "·"}</div><div class="alt">JCR/WoS profili</div></div>
+      <div class="deger">${hWos ?? "·"}</div><div class="alt">${hKaynagi}</div></div>
     <div class="kutu"><div class="etiket">h-indeksi (Scopus)</div>
-      <div class="deger">${hScopus ?? "·"}</div><div class="alt">Scopus yazar profili</div></div>
+      <div class="deger">${hScopus ?? "·"}</div><div class="alt">${hKaynagi}</div></div>
     <div class="kutu"><div class="etiket">Açık erişim</div>
       <div class="deger">${secilen["Açık erişim"]}</div><div class="alt">yayın sayısı</div></div>
     <div class="kutu"><div class="etiket">Atıf (WoS / Scopus)</div>
-      <div class="deger">${secilen["Atıf (WoS)"] ?? "·"} / ${secilen["Atıf (Scopus)"] ?? "·"}</div>
-      <div class="alt">profil toplamı</div></div>
+      <div class="deger">${secilen["Atıf (WoS, profil)"] ?? secilen["Atıf (WoS, veri seti)"] ?? "·"} / ${
+        secilen["Atıf (Scopus, profil)"] ?? secilen["Atıf (Scopus, veri seti)"] ?? "·"}</div>
+      <div class="alt">${hKaynagi}</div></div>
   </div>`;
 
   const Q_KAYNAKLARI = ["WoS", "Scopus", "Devralınan"];
@@ -335,7 +339,14 @@ function kisiEkrani() {
     })),
   };
 
-  return `<h2 style="margin:0 0 10px;font-size:18px">${kacis(secilen["Kişi"])}</h2>` + kutular +
+  const q_ad = encodeURIComponent(secilen["Kişi"]);
+  const profil = `<p class="notu">Kariyer boyu h-indeksi için yazar profilini aç:
+    <a href="https://www.webofscience.com/wos/author/search?authorName=${q_ad}"
+       target="_blank" rel="noopener">WoS</a> ·
+    <a href="https://www.scopus.com/results/authorNamesList.uri?st1=${q_ad}"
+       target="_blank" rel="noopener">Scopus</a></p>`;
+
+  return `<h2 style="margin:0 0 10px;font-size:18px">${kacis(secilen["Kişi"])}</h2>` + kutular + profil +
     `<div class="ikili">` +
     kart("Yıllara göre yayın", "", `<div class="grafik" id="g-kisi-yil"></div>`) +
     kart("Çeyreklik dağılımı", "WoS ve Scopus ayrı sayılır.",
@@ -425,6 +436,12 @@ function veriCekEkrani() {
         <td class="sayi">${g.adet ?? "·"}</td>
         <td>${kacis(g.durum)}${g.mesaj ? " — " + kacis(g.mesaj) : ""}</td></tr>`).join("");
 
+  const metrikler = (bag.metrikler || []).map((k) => `
+    <tr>
+      <td><a class="dugme" href="${k.adres}" target="_blank" rel="noopener">${kacis(k.ad)}</a></td>
+      <td>${kacis(k.nasil)}</td>
+    </tr>`).join("");
+
   return kart("Veriyi kendi oturumunla çek",
     "Kütüphane girişin kendi tarayıcında açık. Aşağıdaki düğme doğru aramayı senin " +
     "tarayıcında açar; sen yalnızca sayfadaki Export düğmesine basarsın. İnen dosya " +
@@ -436,6 +453,17 @@ function veriCekEkrani() {
     "WoS'ta Export → Excel → Record Content: Full Record seçin ve belge türü filtresi " +
     "koymayın. Scopus'ta Export → CSV seçtikten sonra «Bibliographical information» " +
     "kutusunu da işaretleyin; aksi hâlde ISSN ve adres sütunları gelmez.") +
+
+  kart("Çeyreklik ve h-indeksi listeleri",
+    "Yayın dışa aktarımlarında çeyreklik ve h-indeksi bulunmaz; bunlar ayrı listelerden " +
+    "gelir. Aşağıdaki sayfaları kendi oturumunla aç, listeyi indir — panel dosyayı yine " +
+    "kendiliğinden tanır. Bu listeler yılda bir güncellenir, her seferinde indirmen gerekmez.",
+    `<div class="tablo-sarmal"><table>
+       <thead><tr><th>Kaynak</th><th>Nasıl indirilir</th></tr></thead>
+       <tbody>${metrikler}</tbody></table></div>`,
+    "Bu listeler gelmeden önce bile kişi bazlı tabloda «h (…, veri seti)» kolonları " +
+    "doludur: panelde yüklü yayınların atıf sayılarından hesaplanır. Profil h-indeksi " +
+    "(kariyer boyu) yalnızca yukarıdaki yazar listeleri yüklenince görünür.") +
 
   kart("İzlenen klasör",
     iz?.calisiyor ? "Panel bu klasörü izliyor; yeni inen dosya kendiliğinden alınır."

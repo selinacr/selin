@@ -270,13 +270,19 @@ class Panel:
                        else f"t:{sade(ham.get('baslik'))[:70]}|{ham.get('yil')}")
             mevcut = birlesik.get(anahtar)
             if not mevcut:
-                birlesik[anahtar] = {**ham, "kaynak": kaynak, "kaynaklar": [kaynak]}
+                birlesik[anahtar] = {**ham, "kaynak": kaynak, "kaynaklar": [kaynak],
+                                     f"atif_{kaynak}": ham.get("atif", 0)}
                 continue
             kaynaklar = mevcut["kaynaklar"] if kaynak in mevcut["kaynaklar"] else [*mevcut["kaynaklar"], kaynak]
             taban = mevcut if mevcut["kaynak"] == "WoS" else {**ham, "kaynak": kaynak}
             yedek = ham if mevcut["kaynak"] == "WoS" else mevcut
             birlesik[anahtar] = {
                 **taban, "kaynaklar": kaynaklar,
+                # Atıf sayısı kaynağa göre değişir; h hesabı için ikisi de saklanır.
+                "atif_WoS": max(mevcut.get("atif_WoS", 0),
+                                ham.get("atif", 0) if kaynak == "WoS" else 0),
+                "atif_Scopus": max(mevcut.get("atif_Scopus", 0),
+                                   ham.get("atif", 0) if kaynak == "Scopus" else 0),
                 "issn": taban.get("issn") or yedek.get("issn"),
                 "eissn": taban.get("eissn") or yedek.get("eissn"),
                 "doi": taban.get("doi") or yedek.get("doi"),
@@ -507,6 +513,35 @@ class Panel:
             mevcut["profil"] += 1
         return sonuc
 
+    def kisi_h_hesapla(self, senaryo: str = "A") -> dict[str, dict]:
+        """Veri setindeki atıf sayılarından kişi başına h-indeksi ve toplam atıf.
+
+        Kaynak profillerindeki (kariyer boyu) h-indeksinden farklıdır: yalnızca panelde
+        yüklü yayınları kapsar, bu yüzden küçük çıkar. Profil h'si geldiğinde onun yerine
+        geçmez, yanında gösterilir.
+        """
+        kisiler = personel_dizini(self.personel)
+        adjunctlar = [a for a in (adjunct_satiri_coz(s) for s in self.adjunct) if a]
+        dizin = AdayDizini(kisiler)
+        harita = self._esleme_haritasi()
+        bellek: dict = {}
+        atiflar: dict[str, dict[str, list[int]]] = {}
+        for kayit in self.suzulmus(senaryo, "tumu"):
+            for ham_ad in {*kayit.get("kurum_yazarlari", [])}:
+                anahtar = self._kisi_anahtari(ham_ad, dizin, adjunctlar, harita, bellek)
+                if not anahtar:
+                    continue
+                hucre = atiflar.setdefault(anahtar, {"WoS": [], "Scopus": []})
+                for kaynak in ("WoS", "Scopus"):
+                    if kaynak in (kayit.get("kaynaklar") or [kayit.get("kaynak")]):
+                        hucre[kaynak].append(int(kayit.get(f"atif_{kaynak}")
+                                                 or kayit.get("atif") or 0))
+        from .toplayici.api import h_indeksi
+        return {anahtar: {kaynak: {"h": h_indeksi(liste), "atif": sum(liste),
+                                   "yayin": len(liste)}
+                          for kaynak, liste in hucre.items() if liste}
+                for anahtar, hucre in atiflar.items()}
+
     def kisi_q_dagilimi(self, senaryo: str = "A", yil: str = "tumu") -> pd.DataFrame:
         """Kişi × çeyreklik dağılımı; WoS ve Scopus kolonları ayrı."""
         kisiler = personel_dizini(self.personel)
@@ -569,6 +604,7 @@ class Panel:
         kayitlar = self.suzulmus(senaryo, yil)
         yillar = sorted({k["yil"] for k in kayitlar if k["yil"]})
         metrikler = self.metrik_dizini() if self.kisi_metrikleri else {}
+        hesaplanan = self.kisi_h_hesapla(senaryo)
         gruplar: dict[str, dict] = {}
 
         for kayit in kayitlar:
@@ -606,18 +642,26 @@ class Panel:
             satir = {k: v for k, v in grup.items() if k != "yillar"}
             for y in yillar:
                 satir[str(y)] = grup["yillar"].get(y, 0)
+            hesap = hesaplanan.get(anahtar) or {}
+            for kaynak in ("WoS", "Scopus"):
+                hucre = hesap.get(kaynak) or {}
+                satir[f"h ({kaynak}, veri seti)"] = hucre.get("h") or None
+                satir[f"Atıf ({kaynak}, veri seti)"] = hucre.get("atif") or None
             if metrikler:
                 metrik = metrikler.get(anahtar) or {}
-                for onek, kaynak in (("WoS", "WoS"), ("Scopus", "Scopus")):
+                for kaynak in ("WoS", "Scopus"):
                     hucre = metrik.get(kaynak) or {}
-                    satir[f"h ({onek})"] = hucre.get("h") or None
-                    satir[f"Atıf ({onek})"] = hucre.get("atif") or None
+                    satir[f"h ({kaynak}, profil)"] = hucre.get("h") or None
+                    satir[f"Atıf ({kaynak}, profil)"] = hucre.get("atif") or None
             satirlar.append(satir)
 
         sutunlar = ["Kişi", "Durum", "Unvan", "Fakülte", *[str(y) for y in yillar],
-                    "Yayın", "Açık erişim"]
+                    "Yayın", "Açık erişim",
+                    "h (WoS, veri seti)", "h (Scopus, veri seti)",
+                    "Atıf (WoS, veri seti)", "Atıf (Scopus, veri seti)"]
         if metrikler:
-            sutunlar += ["h (WoS)", "h (Scopus)", "Atıf (WoS)", "Atıf (Scopus)"]
+            sutunlar += ["h (WoS, profil)", "h (Scopus, profil)",
+                         "Atıf (WoS, profil)", "Atıf (Scopus, profil)"]
         cerceve = (pd.DataFrame(satirlar)[sutunlar]
                    .sort_values("Yayın", ascending=False, ignore_index=True)) if satirlar \
             else pd.DataFrame(columns=sutunlar)

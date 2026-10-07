@@ -201,6 +201,51 @@ class Izleyici:
 
 
 # --- hazır arama bağlantıları ---------------------------------------------
+# Çeyreklik ve h-indeksi kayıt dışa aktarımlarında yer almaz; bunlar ayrı
+# listelerden gelir. Hepsi kütüphane girişiyle açılır ve dosya olarak indirilir.
+METRIK_KAYNAKLARI = [
+    {
+        "ad": "JCR — WoS çeyreklikleri",
+        "adres": "https://jcr.clarivate.com/jcr/browse-journals",
+        "nasil": "Journals sekmesinde filtreyi kaldırın, sağ üstten Export → XLS/CSV. "
+                 "Dosyada «JIF Quartile» sütunu bulunmalı.",
+        "tur": "jcr",
+    },
+    {
+        "ad": "Scopus Sources — Scopus çeyreklikleri",
+        "adres": "https://www.scopus.com/sources.uri",
+        "nasil": "Sayfadaki «Download Scopus Source List» bağlantısı tüm dergileri "
+                 "CiteScore, yüzdelik dilim ve SJR ile birlikte tek dosyada verir.",
+        "tur": "scopus_kaynak",
+    },
+    {
+        "ad": "WoS — yazar h-indeksleri",
+        "adres": "https://www.webofscience.com/wos/author/search",
+        "nasil": "Kurum adıyla arayıp yazarları seçin, «Export» ile h-index ve "
+                 "atıf sütunlarını indirin.",
+        "tur": "yazar",
+    },
+    {
+        "ad": "Scopus — yazar h-indeksleri",
+        "adres": "https://www.scopus.com/search/form.uri?display=authorLookup",
+        "nasil": "Affiliation olarak kurumu seçip yazarları listeleyin, "
+                 "«Export refined list» ile h-index ve atıfları indirin.",
+        "tur": "yazar",
+    },
+]
+
+
+def yazar_profili_baglantilari(ad: str) -> dict[str, str]:
+    """Bir kişinin iki veritabanındaki yazar arama sayfası."""
+    import urllib.parse
+    q = urllib.parse.quote(ad)
+    return {
+        "wos": f"https://www.webofscience.com/wos/author/search?authorName={q}",
+        "scopus": "https://www.scopus.com/results/authorNamesList.uri?st1="
+                  f"{q}&orcidId=&affiliationId=",
+    }
+
+
 def arama_baglantilari(ayarlar: dict, yillar: list[int]) -> list[dict]:
     """Kullanıcının kendi tarayıcısında açacağı, kuruma göre hazırlanmış aramalar."""
     import urllib.parse

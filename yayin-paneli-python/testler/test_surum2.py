@@ -310,3 +310,32 @@ def test_arama_baglantilari_kuruma_gore_uretilir():
                                    "scopus_kurum_kimligi": "60021658"}, [2026])
     assert "webofscience.com" in satir["wos"] and "2026" in satir["wos"]
     assert "scopus.com" in satir["scopus"] and "60021658" in satir["scopus"]
+
+
+# --- veri setinden h-indeksi ----------------------------------------------
+def test_veri_setinden_h_indeksi_kaynak_bazinda():
+    """Kayıtlardaki atıf sayılarından kişi başına h; WoS ve Scopus ayrı hesaplanır."""
+    from yayin_paneli.analiz import Panel
+    kayitlar = []
+    for i, (wos_atif, scopus_atif) in enumerate([(10, 12), (8, 9), (5, 5), (1, 1)]):
+        kayitlar.append(kayit(id=f"w{i}", doi=f"10.1/{i}", atif=wos_atif,
+                              kurum_yazarlari=["Minaei, Shahram"]))
+        kayitlar.append(kayit(id=f"s{i}", doi=f"10.1/{i}", atif=scopus_atif, kaynak="Scopus",
+                              kurum_yazarlari=["Minaei, Shahram"]))
+    panel = Panel(kayitlar=kayitlar, personel=PERSONEL)
+    (hucre,) = panel.kisi_h_hesapla().values()
+    assert hucre["WoS"] == {"h": 3, "atif": 24, "yayin": 4}
+    assert hucre["Scopus"] == {"h": 3, "atif": 27, "yayin": 4}
+
+    cerceve, _ = panel.kisi_bazli("A", "tumu")
+    satir = cerceve.iloc[0]
+    assert satir["h (WoS, veri seti)"] == 3 and satir["Atıf (Scopus, veri seti)"] == 27
+
+
+def test_metrik_kaynak_baglantilari():
+    from yayin_paneli.izleyici import METRIK_KAYNAKLARI, yazar_profili_baglantilari
+    turler = {k["tur"] for k in METRIK_KAYNAKLARI}
+    assert {"jcr", "scopus_kaynak", "yazar"} <= turler
+    assert all(k["adres"].startswith("https://") for k in METRIK_KAYNAKLARI)
+    profil = yazar_profili_baglantilari("Şahram Minayi")
+    assert "webofscience.com" in profil["wos"] and "scopus.com" in profil["scopus"]
