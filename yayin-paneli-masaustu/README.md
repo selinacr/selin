@@ -1,33 +1,50 @@
 # Yayın Paneli — masaüstü uygulaması
 
-Claude'da barındırılan yayın panelini kendi penceresinde açan küçük bir Electron
-uygulaması. Veriler panelde (Claude tarafında) durduğu için masaüstü sürümü ile
-tarayıcı sürümü aynı veriyi gösterir; link paylaşımı da bozulmaz.
+Yerel panel servisini (`python -m yayin_paneli.servis`) kendi penceresinde açan küçük
+bir Electron uygulaması. Tarayıcı sekmesi yerine ayrı bir uygulama penceresi ister
+diye var; veriler aynı yerde durduğu için iki yol da aynı paneli gösterir.
 
-## Hazır .exe indirmek (kurulum gerektirmeyen yol)
+**Önce servis çalışmalı.** Uygulama <http://127.0.0.1:8787/> adresine bağlanır:
+`yayin-paneli-python` klasöründe `baslat_panel.command` (macOS) ya da
+`baslat_panel.bat` (Windows). Servis kapalıyken uygulama "bağlanılamadı" ekranı
+gösterir ve **Yeniden dene** düğmesi sunar.
+
+## Hazır dosyayı indirmek
 
 1. GitHub'da bu deponun **Actions** sekmesini açın.
-2. "Masaüstü uygulaması (Windows)" iş akışının en son başarılı çalışmasına girin.
-3. Sayfanın altındaki **YayinPaneli-windows** dosyasını indirin, zip'i açın.
-4. İçinden çıkan iki dosyadan birini kullanın:
-   - `YayinPaneli-tasinabilir-1.0.0.exe` — kurulum yok, çift tıklayınca açılır.
-   - `Yayin Paneli Setup 1.0.0.exe` — kurar ve masaüstüne kısayol ekler.
+2. "Masaüstü uygulaması (Windows + macOS)" iş akışının en son başarılı çalışmasına girin.
+3. Sayfanın altındaki artifact'lardan işletim sisteminize uyanı indirin:
+   - **YayinPaneli-macos** → `YayinPaneli-1.0.0-mac.dmg` (Intel + Apple Silicon ortak)
+   - **YayinPaneli-windows** → taşınabilir `.exe` ya da kurulumlu `Setup .exe`
 
-İlk açılışta Claude hesabınıza bir kez giriş yaparsınız; oturum saklandığı için
-sonraki açılışlarda doğrudan panel gelir.
+### macOS'ta ilk açılış
 
-## Kaynaktan çalıştırmak (geliştirme)
+Uygulama Apple geliştirici sertifikasıyla imzalanmadığı için macOS ilk açılışta
+engeller. Tek seferlik:
+
+1. `.dmg` dosyasını açın, **Yayin Paneli** uygulamasını `Applications` klasörüne sürükleyin.
+2. Uygulamaya **sağ tık → Aç**, çıkan uyarıda yine **Aç** deyin.
+   (Çift tıklamak bu ilk seferde çalışmaz; sonraki açılışlarda çalışır.)
+3. Sistem Ayarları → Gizlilik ve Güvenlik altında "yine de aç" seçeneği de çıkabilir.
+
+## Kaynaktan çalıştırmak
 
 Node.js 20+ gerekir:
 
-    cd yayin-paneli-masaustu
-    npm install
-    npm start
+```
+cd yayin-paneli-masaustu
+npm install
+npm start
+```
 
-Windows kurulum dosyalarını yerel olarak üretmek için: `npm run dist`
-(çıktı `dist/` klasörüne yazılır).
+Paket üretmek: Windows için `npm run dist`, macOS için `npm run dist:mac`
+(çıktı `dist/` klasörüne yazılır). macOS paketi yalnızca bir Mac'te üretilebilir.
 
 ## Panel adresi değişirse
 
 `main.js` içindeki `PANEL_ADRESI` sabitini güncelleyin ya da uygulamayı
-`YAYIN_PANELI_URL` ortam değişkeni ile çalıştırın.
+`YAYIN_PANELI_URL` ortam değişkeni ile çalıştırın:
+
+```
+YAYIN_PANELI_URL=http://127.0.0.1:9000/ npm start
+```

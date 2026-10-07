@@ -5,11 +5,13 @@ analizlerini iki kaynak için ayrı ayrı üreten panel. Mimari ayrıntılar: `M
 
 ## Kurulum
 
-Anaconda Prompt (ya da herhangi bir terminal) içinde, bu klasörde:
+Terminalde (Windows'ta Anaconda Prompt, macOS'ta Terminal) bu klasörde:
 
 ```
 python -m pip install -r requirements.txt
 ```
+
+macOS'ta `python` komutu bulunmayabilir; o durumda `python3` yazın.
 
 ## Çalıştırma
 
@@ -19,8 +21,24 @@ python -m pip install -r requirements.txt
 python -m yayin_paneli.servis
 ```
 
-Ardından tarayıcıda <http://127.0.0.1:8787/>. Windows'ta `baslat_panel.bat` dosyasına
-çift tıklamak da aynı işi yapar.
+Ardından tarayıcıda <http://127.0.0.1:8787/>.
+
+- **Windows:** `baslat_panel.bat` dosyasına çift tıklamak da yeter.
+- **macOS / Linux:** `baslat_panel.command` dosyasına çift tıklayın. İlk kullanımda
+  Terminal'de bir kez `chmod +x baslat_panel.command` çalıştırmak gerekebilir;
+  macOS "geliştirici doğrulanamadı" derse dosyaya sağ tık → **Aç** deyin.
+
+Veritabanı bulunamazsa panel beklediği dosya yolunu ekranda gösterir. Başka bir
+konumdaki veritabanını kullanmak için:
+
+```
+# macOS / Linux
+YAYIN_PANELI_DB=~/Downloads/panel.db python -m yayin_paneli.servis
+
+# Windows
+set YAYIN_PANELI_DB=C:\Users\sacar\Downloads\panel.db
+python -m yayin_paneli.servis
+```
 
 Adres çubuğundaki **Uygulamayı yükle** düğmesiyle panel masaüstüne ya da telefonun
 ana ekranına kurulabilir; çevrimdışı açıldığında son görülen veriler gösterilir.

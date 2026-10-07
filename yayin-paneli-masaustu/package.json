@@ -2,11 +2,12 @@
   "name": "yayin-paneli-masaustu",
   "productName": "Yayın Paneli",
   "version": "1.0.0",
-  "description": "Doğuş Üniversitesi kurum/adjunct yayın panelini kendi penceresinde açan masaüstü uygulaması",
+  "description": "Doğuş Üniversitesi yayın panelini kendi penceresinde açan masaüstü uygulaması (Windows ve macOS)",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable nsis"
+    "dist": "electron-builder --win portable nsis",
+    "dist:mac": "electron-builder --mac dmg zip"
   },
   "author": "ARDES",
   "license": "MIT",
@@ -17,9 +18,15 @@
   "build": {
     "appId": "edu.dogus.ardes.yayinpaneli",
     "productName": "Yayin Paneli",
-    "files": ["main.js", "package.json"],
+    "files": [
+      "main.js",
+      "package.json"
+    ],
     "win": {
-      "target": ["portable", "nsis"]
+      "target": [
+        "portable",
+        "nsis"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -30,6 +37,28 @@
     },
     "portable": {
       "artifactName": "YayinPaneli-tasinabilir-${version}.exe"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "darkModeSupport": true,
+      "identity": null
+    },
+    "dmg": {
+      "artifactName": "YayinPaneli-${version}-mac.dmg"
     }
   }
 }

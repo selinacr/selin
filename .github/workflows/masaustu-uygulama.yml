@@ -1,4 +1,4 @@
-name: Masaüstü uygulaması (Windows)
+name: Masaüstü uygulaması (Windows + macOS)
 
 on:
   workflow_dispatch:
@@ -9,8 +9,22 @@ on:
       - ".github/workflows/masaustu-uygulama.yml"
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  masaustu:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - isletim: windows-latest
+            ad: windows
+            komut: npx electron-builder --win portable nsis
+            cikti: yayin-paneli-masaustu/dist/*.exe
+          - isletim: macos-latest
+            ad: macos
+            komut: npx electron-builder --mac dmg zip
+            cikti: |
+              yayin-paneli-masaustu/dist/*.dmg
+              yayin-paneli-masaustu/dist/*.zip
+    runs-on: ${{ matrix.isletim }}
     defaults:
       run:
         working-directory: yayin-paneli-masaustu
@@ -20,12 +34,13 @@ jobs:
         with:
           node-version: "20"
       - run: npm install
-      - run: npx electron-builder --win portable nsis
+      - run: ${{ matrix.komut }}
         env:
           GH_TOKEN: ""
+          # Uygulama kod imzası olmadan paketlenir; imzalama anahtarı yok.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:
-          name: YayinPaneli-windows
-          path: |
-            yayin-paneli-masaustu/dist/*.exe
+          name: YayinPaneli-${{ matrix.ad }}
+          path: ${{ matrix.cikti }}
           if-no-files-found: error
