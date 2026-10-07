@@ -203,8 +203,8 @@ function ciz() {
 
     karsilastirma: () => kart("WoS ↔ Scopus çeyreklik karşılaştırması",
       "Aynı yayın kümesinin iki kaynaktaki çeyrekliği. WoS kolonu JCR, Scopus kolonu " +
-      "CiteScore/SJR değerlerinden gelir. İlk senkron tamamlanana kadar bu iki kolon boş " +
-      "kalır; «Devralınan liste» kolonu eski çeyreklik listesinden gelen değerleri gösterir.",
+      "CiteScore/SJR değerlerinden gelir. Bu kolonlar, Veri çek sekmesinden JCR ve " +
+      "Scopus Sources listelerini indirene kadar boş kalır.",
       `<div class="grafik" id="g-karsilastirma"></div>` + tabloHtml(v.quartile_karsilastirma)),
 
     indeks: () => kart("İndeks dağılımı",
@@ -329,7 +329,7 @@ function kisiEkrani() {
       <div class="alt">${hKaynagi}</div></div>
   </div>`;
 
-  const Q_KAYNAKLARI = ["WoS", "Scopus", "Devralınan"];
+  const Q_KAYNAKLARI = ["WoS", "Scopus"];
   const qTablo = {
     sutunlar: ["Kaynak", "Q1", "Q2", "Q3", "Q4"],
     satirlar: Q_KAYNAKLARI.map((kaynak) => ({
@@ -373,8 +373,6 @@ function kisiGrafikleri() {
           degerler: ["Q1", "Q2", "Q3", "Q4"].map((x) => q[`WoS ${x}`] || 0) },
         { ad: "Scopus", renk: Grafik.renk("--scopus"),
           degerler: ["Q1", "Q2", "Q3", "Q4"].map((x) => q[`Scopus ${x}`] || 0) },
-        { ad: "Devralınan liste", renk: Grafik.renk("--q-yok"),
-          degerler: ["Q1", "Q2", "Q3", "Q4"].map((x) => q[`Devralınan ${x}`] || 0) },
       ],
       birim: "yayın",
     });
@@ -521,10 +519,10 @@ function senkEkrani() {
           { Gösterge: "Adjunct adı", Değer: d.adjunct },
           { Gösterge: "Dergi metrik satırı", Değer: d.dergi_metrik },
           ...Object.entries(d.metrik_kaynaklari || {}).map(([k, v]) => (
-            { Gösterge: `  — ${k === "miras" ? "devralınan liste" : k} çeyreklikleri`, Değer: v })),
+            { Gösterge: `  — ${k} çeyreklikleri`, Değer: v })),
           { Gösterge: "Yazar metrik profili", Değer: d.kisi_metrik },
           ...Object.entries(d.yazar_kaynaklari || {}).map(([k, v]) => (
-            { Gösterge: `  — ${k === "miras" ? "devralınan profil" : k} h-indeksi`, Değer: v })),
+            { Gösterge: `  — ${k} h-indeksi`, Değer: v })),
           { Gösterge: "Onay bekleyen isim", Değer: d.bekleyen_onay },
         ],
       })) +

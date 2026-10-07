@@ -157,9 +157,11 @@ WoS çeyrekliği **JCR**, Scopus çeyrekliği **CiteScore yüzdelik dilimi** (yo
 üzerinden hesaplanır. Her yayın hem `q_wos` hem `q_scopus` taşır; panelin gösterdiği
 değer üstteki kaynak filtresine göre çözülür.
 
-Sürüm 1'den devralınan eski çeyreklik listesi `devralınan` etiketiyle saklanır ve
-yalnızca iki kaynaktan da değer gelmeyen yayınlarda kullanılır; gerçek değer geldiğinde
-otomatik olarak devreye girer.
+Çeyreklik **yalnızca** bu iki kaynaktan gelir. Sürüm 1'de kullanılan SCImago SJR listeleri
+ve OpenAlex yazar metrikleri WoS/Scopus kaynaklı olmadığı için tamamen kaldırıldı; eski bir
+veritabanı açıldığında bu satırlar silinir. JCR ve Scopus Sources listeleri yüklenene kadar
+tüm yayınlar "Sınıflandırılamayan" görünür — bu bir hata değil, verinin henüz gelmediğini
+gösterir.
 
 ## Otomatik toplama
 

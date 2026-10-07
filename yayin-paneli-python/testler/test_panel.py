@@ -147,12 +147,12 @@ def test_q_kaynak_bazinda_ayri_tutulur():
     assert zengin["q"] == "Q2" and zengin["q_kaynagi"] == "Scopus"
 
 
-def test_devralinan_liste_yalnizca_bosluk_doldurur():
-    """WoS/Scopus metriği gelene kadar eski liste kullanılır, geldiğinde devredilir."""
+def test_wos_scopus_disi_kaynak_ceyreklik_vermez():
+    """Çeyreklik yalnızca WoS (JCR) ve Scopus (CiteScore/SJR) satırlarından gelir."""
     panel = Panel(kayitlar=[kayit(issn="11112222")],
-                  dergi_metrikleri=[dergi_metrik("miras", 2025, "11112222", "Q3")])
+                  dergi_metrikleri=[dergi_metrik("SCImago", 2025, "11112222", "Q3")])
     (zengin,), _ = panel.zenginlestir()
-    assert zengin["q"] == "Q3" and zengin["q_kaynagi"] == "devralınan"
+    assert zengin["q"] == "Sınıflandırılamayan" and zengin["q_kaynagi"] == "—"
 
     panel.dergi_metrikleri.append(dergi_metrik("WoS", 2025, "11112222", "Q1"))
     panel._q_bellek = None

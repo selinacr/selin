@@ -60,18 +60,30 @@ def test_ilk_gorulme_korunur_yeni_kayit_isaretlenir(depo):
     assert depo.yeni_kayitlar("1970-01-01T00:00:00+00:00")
 
 
-def test_goc_eski_quartilleri_miras_olarak_tasir(tmp_path):
+def test_goc_yayinlari_tasir_wos_scopus_disi_metrikleri_atar(tmp_path):
+    """Yayın kayıtları taşınır; SCImago/OpenAlex kökenli metrikler taşınmaz."""
     yol = tmp_path / "eski.db"
     d = Depo(yol)
     d.yaz("quartiller", {"2025": {"12345678": "Q1"}})
     d.yaz("metrikler", [{"ad": "A B", "kimlik": "A1", "h": 5, "atif": 10}])
     d.yaz("kurum_kayitlari", [kayit(id="a")])
-    Depo(yol)  # yeniden açmak göçü çalıştırır
-    yeni = Depo(yol)
-    assert [s["kaynak"] for s in yeni.dergi_metrikleri()] == ["miras"]
-    assert [s["kaynak"] for s in yeni.kisi_metrikleri()] == ["miras"]
+    yeni = Depo(yol)                          # yeniden açmak göçü çalıştırır
     assert len(yeni.kayitlar()) == 1
-    assert yeni.oku("quartiller") == []      # eski anahtar silinmiş olmalı
+    assert yeni.dergi_metrikleri() == [] and yeni.kisi_metrikleri() == []
+    assert yeni.oku("quartiller") == []
+
+
+def test_miras_temizle_yalnizca_wos_scopus_birakir(tmp_path):
+    d = Depo(tmp_path / "temiz.db")
+    d.dergi_metrik_ekle([
+        {"kaynak": "WoS", "yil": 2025, "issn": "11112222", "q": "Q1"},
+        {"kaynak": "Scopus", "yil": 2025, "issn": "11112222", "q": "Q2"},
+        {"kaynak": "SCImago", "yil": 2025, "issn": "11112222", "q": "Q3"},
+    ])
+    d.kisi_metrik_ekle([{"kaynak": "OpenAlex", "profil_kimlik": "A1", "ad": "X", "h": 9}])
+    assert d.miras_temizle() == 2
+    assert {s["kaynak"] for s in d.dergi_metrikleri()} == {"WoS", "Scopus"}
+    assert d.kisi_metrikleri() == []
 
 
 def test_senk_gunlugu_ve_ayarlar(depo):

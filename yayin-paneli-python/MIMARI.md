@@ -33,10 +33,10 @@ app.py            Streamlit arayüzü (yerel hızlı kullanım için korunur)
 | `Panel.quartiller` (yıl → ISSN → Q) | `Panel.dergi_metrikleri` (kaynak + yıl + ISSN → Q) |
 | `Panel.metrikler` (OpenAlex) | `Panel.kisi_metrikleri` (kaynak bazlı h ve atıf) |
 
-Eski panel veritabanındaki `quartiller` ve `metrikler` anahtarları göç sırasında
-`dergi_metrik` / `kisi_metrik` tablolarına `kaynak = "miras"` etiketiyle taşınır; böylece
-yeni toplama tamamlanana kadar eldeki çeyreklikler kaybolmaz ve toplayıcı çalıştıkça
-gerçek WoS/Scopus değerleriyle üzerine yazılır.
+Eski panel veritabanındaki `quartiller` (SCImago SJR) ve `metrikler` (OpenAlex)
+anahtarları WoS/Scopus kaynaklı olmadığı için **taşınmaz, silinir**. `dergi_metrik` ve
+`kisi_metrik` tablolarında yalnızca `kaynak` alanı `WoS` ya da `Scopus` olan satırlar
+tutulur; `Depo.miras_temizle()` diğerlerini siler ve her açılışta çalışır.
 
 ## 3. Veri modeli (SQLite)
 
@@ -66,7 +66,7 @@ ayarlar için korunur; tablo hâline geçen veriler oradan silinir.
   WoS seçiliyse `q_wos`, Scopus seçiliyse `q_scopus`, birleşik görünümde `q_wos` varsa o,
   yoksa `q_scopus`. Bildiriler her durumda "Bildiri" sayılır ve analiz dışında tutulur.
 - ISSN eşleşmesi tutmazsa dergi adı normalleştirilerek aranır; o da yoksa
-  "Sınıflandırılamayan".
+  "Sınıflandırılamayan". Başka hiçbir liste yedek olarak kullanılmaz.
 
 ## 5. Otomatik toplama
 

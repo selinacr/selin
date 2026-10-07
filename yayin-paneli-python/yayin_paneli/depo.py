@@ -323,21 +323,18 @@ class Depo:
                 sonuc["kayit"] = self.kayitlari_ekle(altkume, kaynak, yil=None)
             self.sil("kurum_kayitlari")
 
-        if "quartiller" in var:
-            satirlar = []
-            for yil, harita in (self.oku("quartiller") or {}).items():
-                for issn, q in harita.items():
-                    satirlar.append({"kaynak": "miras", "yil": int(yil), "issn": issn,
-                                     "kategori": "", "q": q})
-            if satirlar:
-                sonuc["dergi_metrik"] = self.dergi_metrik_ekle(satirlar)
-            self.sil("quartiller")
-
-        if "metrikler" in var:
-            eski = self.oku("metrikler") or []
-            if eski:
-                sonuc["kisi_metrik"] = self.kisi_metrik_ekle(
-                    [{"kaynak": "miras", "profil_kimlik": k.get("kimlik") or k.get("ad"),
-                      "ad": k.get("ad"), "h": k.get("h"), "atif": k.get("atif")} for k in eski])
-            self.sil("metrikler")
+        # Sürüm 1'deki çeyreklik (SCImago SJR) ve yazar metrikleri (OpenAlex) WoS/Scopus
+        # kaynaklı olmadığı için taşınmaz, atılır. Çeyreklik yalnızca JCR'den (WoS) ve
+        # Scopus Sources/CiteScore'dan gelir.
+        for eski_anahtar in ("quartiller", "metrikler"):
+            if eski_anahtar in var:
+                self.sil(eski_anahtar)
+        sonuc["temizlenen"] = self.miras_temizle()
         return sonuc
+
+    def miras_temizle(self) -> int:
+        """WoS/Scopus dışı kaynaklardan devralınan metrik satırlarını siler."""
+        with self._baglanti() as db:
+            silinen = db.execute("DELETE FROM dergi_metrik WHERE kaynak NOT IN ('WoS','Scopus')").rowcount
+            silinen += db.execute("DELETE FROM kisi_metrik WHERE kaynak NOT IN ('WoS','Scopus')").rowcount
+        return silinen

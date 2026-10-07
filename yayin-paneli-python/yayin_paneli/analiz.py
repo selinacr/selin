@@ -231,7 +231,6 @@ class Panel:
             return {"q": "Bildiri", "q_wos": "Bildiri", "q_scopus": "Bildiri", "q_kaynagi": "—"}
         q_wos, _ = self._dergi_q("WoS", kayit)
         q_scopus, _ = self._dergi_q("Scopus", kayit)
-        devralinan, _ = self._dergi_q("miras", kayit)
         secim = self.kaynak_secimi
         if secim == "WoS":
             etkin, kaynagi = q_wos, "WoS"
@@ -239,13 +238,10 @@ class Panel:
             etkin, kaynagi = q_scopus, "Scopus"
         else:
             etkin, kaynagi = (q_wos, "WoS") if q_wos else (q_scopus, "Scopus")
-        if not etkin and devralinan:
-            etkin, kaynagi = devralinan, "devralınan"
         return {
             "q": etkin or "Sınıflandırılamayan",
             "q_wos": q_wos or "—",
             "q_scopus": q_scopus or "—",
-            "q_devralinan": devralinan or "—",
             "q_kaynagi": kaynagi if etkin else "—",
         }
 
@@ -560,10 +556,9 @@ class Panel:
                 grup = gruplar.setdefault(anahtar, {"Kişi": etiketler.get(anahtar, ham_ad),
                                                     "Yayın": 0,
                                                     **{f"{o} {q}": 0 for q in Q_SIRASI[:4]
-                                                       for o in ("WoS", "Scopus", "Devralınan")}})
+                                                       for o in ("WoS", "Scopus")}})
                 grup["Yayın"] += 1
-                for onek, alan in (("WoS", "q_wos"), ("Scopus", "q_scopus"),
-                                   ("Devralınan", "q_devralinan")):
+                for onek, alan in (("WoS", "q_wos"), ("Scopus", "q_scopus")):
                     q = kayit.get(alan)
                     if q in Q_SIRASI[:4]:
                         grup[f"{onek} {q}"] += 1
@@ -591,7 +586,6 @@ class Panel:
                 "WoS (JCR)": wos, "WoS payı": pay(wos),
                 "Scopus (CiteScore/SJR)": scopus, "Scopus payı": pay(scopus),
                 "Fark": wos - scopus,
-                "Devralınan liste": sayim("q_devralinan", q),
             })
         return pd.DataFrame(satirlar)
 
