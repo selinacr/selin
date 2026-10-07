@@ -93,6 +93,26 @@ python araclar/veri_yukle.py --senk        # WoS + Scopus senkronunu hemen çal�
 python araclar/veri_yukle.py --kuyruk      # onay kuyruğunu yeniden hesapla
 ```
 
+## Veri çekmenin en kolay yolu: **Veri çek** sekmesi
+
+Kütüphane girişin kendi tarayıcında açık olduğu için panel senin yerine giriş yapmaz;
+bunun yerine işi tek tıka indirir:
+
+1. Panelde **Veri çek** sekmesini aç.
+2. İstediğin yılın yanındaki **WoS'ta aç** ya da **Scopus'ta aç** düğmesine bas —
+   kurum ve yıl filtresi hazır gelmiş arama senin tarayıcında açılır.
+3. Sayfadaki **Export** düğmesine bas (ayarlar aşağıda).
+4. Dosya İndirilenler klasörüne düştüğü anda panel onu tanır, çözümler ve tablolar
+   kendiliğinden güncellenir. Dosya seçme, yükleme, klasör bulma adımı yok.
+
+Panel İndirilenler klasörünü arka planda izler; izlemeyi başlatmadan önce klasörde
+bulunan dosyalara dokunmaz, yalnızca yeni inenleri alır. Başka bir klasörü izletmek
+istersen aynı sekmeden değiştirebilirsin. Aynı dosya ikinci kez alınmaz; aynı kaynağın
+aynı yılı yeniden indiğinde o yıl tazelenir, diğer yıllar ve diğer kaynak korunur.
+
+Tanınan dosyalar: WoS Full Record, Scopus CSV, JCR çeyreklik, Scopus Sources/CiteScore,
+yazar h-indeksi listesi, personel listesi ve adjunct puantaj tabloları.
+
 ## Dışa aktarma ayarları (önemli)
 
 Elle yüklenen dosyalarda eksik alan varsa analiz de eksik çıkar. Doğru sonuç için:

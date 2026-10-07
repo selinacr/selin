@@ -69,7 +69,9 @@ def main() -> None:
 
     import uvicorn
 
-    from yayin_paneli.servis import uygulama
+    from yayin_paneli.servis import izleyici, uygulama
+
+    izleyici.basla()          # İndirilenler klasörü baştan izlenir
 
     port = bos_port()
     adres = f"http://127.0.0.1:{port}/"

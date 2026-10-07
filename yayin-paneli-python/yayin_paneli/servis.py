@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from .analiz import Panel
 from .depo import Depo
 from .eslesme import kuyrugu_tazele
+from .izleyici import Izleyici, arama_baglantilari, varsayilan_klasor
 from .toplayici.zamanlayici import Zamanlayici
 
 # Paketlenmiş uygulamada web dosyaları gömülü klasörden gelir.
@@ -32,6 +33,7 @@ PAKET = os.environ.get("YAYIN_PANELI_PAKET") == "1"
 uygulama = FastAPI(title="Doğuş Üniversitesi Yayın Paneli", version="2.0")
 depo = Depo()
 zamanlayici = Zamanlayici(depo)
+izleyici = Izleyici(depo, Path(depo.ayarlar().get("indirilenler") or varsayilan_klasor()))
 
 
 def panel_kur(kaynak: str = "hepsi", bildiri: bool = True) -> Panel:
@@ -77,6 +79,12 @@ def durum() -> dict:
         "ayarlar": depo.ayarlar(),
         "zamanlayici": zamanlayici.calisiyor,
         "paket": PAKET,
+        "izleyici": {
+            "calisiyor": izleyici.calisiyor,
+            "klasor": str(izleyici.klasor),
+            "var": izleyici.klasor.is_dir(),
+            "gecmis": izleyici.gecmis,
+        },
         "son_senk": son,
         "gunluk": gunluk,
     }
@@ -182,6 +190,44 @@ def ayar_guncelle(guncelleme: AyarGuncelleme) -> dict:
     return depo.ayar_yaz(yeniler)
 
 
+@uygulama.get("/api/baglantilar")
+def baglantilar() -> dict:
+    """Kullanıcının kendi tarayıcısında açacağı hazır WoS/Scopus aramaları."""
+    ayarlar = depo.ayarlar()
+    ilk = int(ayarlar.get("ilk_yil") or 2022)
+    from datetime import datetime
+    yillar = list(range(ilk, datetime.now().year + 2))
+    return {"yillar": arama_baglantilari(ayarlar, yillar), "klasor": str(izleyici.klasor)}
+
+
+class IzleyiciAyari(BaseModel):
+    klasor: str | None = None
+
+
+@uygulama.post("/api/izleyici/{eylem}")
+def izleyici_yonet(eylem: str, ayar: IzleyiciAyari | None = None) -> dict:
+    global izleyici
+    if eylem == "klasor" and ayar and ayar.klasor:
+        yeni = Path(ayar.klasor).expanduser()
+        if not yeni.is_dir():
+            raise HTTPException(400, f"Klasör bulunamadı: {yeni}")
+        calisiyordu = izleyici.calisiyor
+        izleyici.dur()
+        izleyici = Izleyici(depo, yeni)
+        depo.ayar_yaz({"indirilenler": str(yeni)})
+        if calisiyordu:
+            izleyici.basla()
+    elif eylem == "basla":
+        izleyici.basla()
+    elif eylem == "dur":
+        izleyici.dur()
+    elif eylem == "tara":
+        return {"alinan": izleyici.bir_tarama(), "calisiyor": izleyici.calisiyor}
+    else:
+        raise HTTPException(400, "eylem 'basla', 'dur', 'tara' ya da 'klasor' olmalı.")
+    return {"calisiyor": izleyici.calisiyor, "klasor": str(izleyici.klasor)}
+
+
 @uygulama.post("/api/senk")
 def senk_tetikle() -> dict:
     from .toplayici import senkronize
@@ -242,8 +288,7 @@ else:  # pragma: no cover
 
 def main() -> None:  # pragma: no cover
     import uvicorn
-    if depo.ayarlar().get("senk_aralik_dk"):
-        zamanlayici.basla()
+    izleyici.basla()          # indirilen dosyalar kendiliğinden içeri alınsın
     uvicorn.run(uygulama, host="127.0.0.1", port=8787)
 
 

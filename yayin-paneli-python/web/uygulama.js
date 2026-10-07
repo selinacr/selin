@@ -26,6 +26,7 @@ const SEKMELER = [
   { kod: "kisi", ad: "Kişi analizi" },
   { kod: "dergi", ad: "Dergiler" },
   { kod: "onay", ad: "Onay kuyruğu", rozet: () => (DURUM.durum?.bekleyen_onay || 0) },
+  { kod: "veri", ad: "Veri çek" },
   { kod: "senk", ad: "Senkron" },
 ];
 
@@ -227,6 +228,7 @@ function ciz() {
       tabloHtml(v.dergi, { arama: DURUM.arama })),
 
     onay: () => onayEkrani(),
+    veri: () => veriCekEkrani(),
     senk: () => senkEkrani(),
   };
 
@@ -401,6 +403,59 @@ async function kuyrukYenile() {
   }
 }
 
+/* --- veri çekme ------------------------------------------------------- */
+function veriCekEkrani() {
+  const d = DURUM.durum;
+  const iz = d?.izleyici;
+  const bag = DURUM.baglantilar;
+  if (!bag) {
+    getir("/api/baglantilar").then((v) => { DURUM.baglantilar = v; ciz(); }).catch(() => {});
+    return `<div class="bos">Bağlantılar hazırlanıyor…</div>`;
+  }
+
+  const satirlar = bag.yillar.map((y) => `
+    <tr>
+      <td>${y.yil}</td>
+      <td><a class="dugme" href="${y.wos}" target="_blank" rel="noopener">WoS'ta aç</a></td>
+      <td><a class="dugme" href="${y.scopus}" target="_blank" rel="noopener">Scopus'ta aç</a></td>
+    </tr>`).join("");
+
+  const gecmis = (iz?.gecmis || []).map((g) => `
+    <tr><td>${kacis(g.dosya)}</td><td>${kacis(g.tur || "—")}</td>
+        <td class="sayi">${g.adet ?? "·"}</td>
+        <td>${kacis(g.durum)}${g.mesaj ? " — " + kacis(g.mesaj) : ""}</td></tr>`).join("");
+
+  return kart("Veriyi kendi oturumunla çek",
+    "Kütüphane girişin kendi tarayıcında açık. Aşağıdaki düğme doğru aramayı senin " +
+    "tarayıcında açar; sen yalnızca sayfadaki Export düğmesine basarsın. İnen dosya " +
+    "İndirilenler klasörüne düştüğü anda panel onu tanıyıp içeri alır — dosya seçmen, " +
+    "yüklemen gerekmez.",
+    `<div class="tablo-sarmal"><table>
+       <thead><tr><th>Yıl</th><th>Web of Science</th><th>Scopus</th></tr></thead>
+       <tbody>${satirlar}</tbody></table></div>`,
+    "WoS'ta Export → Excel → Record Content: Full Record seçin ve belge türü filtresi " +
+    "koymayın. Scopus'ta Export → CSV seçtikten sonra «Bibliographical information» " +
+    "kutusunu da işaretleyin; aksi hâlde ISSN ve adres sütunları gelmez.") +
+
+  kart("İzlenen klasör",
+    iz?.calisiyor ? "Panel bu klasörü izliyor; yeni inen dosya kendiliğinden alınır."
+                  : "İzleme kapalı. Açarsanız inen dosyalar kendiliğinden alınır.",
+    `<div class="filtreler" style="padding:0">
+      <input type="text" id="izleme-klasoru" value="${kacis(iz?.klasor || "")}" style="min-width:320px">
+      <button class="dugme" id="klasor-kaydet">Klasörü değiştir</button>
+      <button class="dugme vurgulu" id="izleme-degistir">${
+        iz?.calisiyor ? "İzlemeyi durdur" : "İzlemeyi başlat"}</button>
+      <button class="dugme" id="simdi-tara">Şimdi tara</button>
+    </div>` +
+    (iz?.var ? "" : `<p class="notu">Bu klasör bulunamadı; doğru yolu yazıp kaydedin.</p>`)) +
+
+  kart("Son alınan dosyalar", "",
+    gecmis ? `<div class="tablo-sarmal"><table>
+        <thead><tr><th>Dosya</th><th>Tür</th><th class="sayi">Kayıt</th><th>Durum</th></tr></thead>
+        <tbody>${gecmis}</tbody></table></div>`
+      : `<div class="bos">Henüz dosya alınmadı.</div>`);
+}
+
 /* --- senkron ---------------------------------------------------------- */
 function senkEkrani() {
   const d = DURUM.durum;
@@ -561,6 +616,30 @@ function olaylariBagla() {
       return;
     }
 
+    if (olay.target.id === "izleme-degistir") {
+      const eylem = DURUM.durum?.izleyici?.calisiyor ? "dur" : "basla";
+      await getir(`/api/izleyici/${eylem}`, { method: "POST" });
+      await durumuYenile(); ciz();
+      return;
+    }
+
+    if (olay.target.id === "simdi-tara") {
+      olay.target.disabled = true;
+      const sonuc = await getir("/api/izleyici/tara", { method: "POST" }).catch(() => null);
+      await durumuYenile();
+      if (sonuc?.alinan?.length) await veriYenile(); else ciz();
+      return;
+    }
+
+    if (olay.target.id === "klasor-kaydet") {
+      await getir("/api/izleyici/klasor", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ klasor: $("#izleme-klasoru").value }),
+      }).catch((hata) => alert(hata.message));
+      await durumuYenile(); ciz();
+      return;
+    }
+
     if (olay.target.id === "ayar-kaydet") {
       const yol = govde().querySelector('#yol-secici button[aria-pressed="true"]')?.dataset.deger;
       await getir("/api/ayarlar", {
@@ -603,7 +682,16 @@ async function basla() {
   await durumuYenile();
   await kuyrukYenile();
   await veriYenile();
-  setInterval(durumuYenile, 5 * 60 * 1000);
+  // İzleyici yeni dosya aldıysa tabloları da tazele
+  let sonGecmis = 0;
+  setInterval(async () => {
+    await durumuYenile();
+    const adet = DURUM.durum?.izleyici?.gecmis?.length || 0;
+    if (adet !== sonGecmis) {
+      sonGecmis = adet;
+      await veriYenile();
+    }
+  }, 10 * 1000);
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
