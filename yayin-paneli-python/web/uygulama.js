@@ -99,6 +99,7 @@ async function durumuYenile() {
     ? `${Grafik.sayiBicim(d.kayit)} kayıt · ${d.personel} personel · ${d.adjunct} adjunct · ` +
       `kaynaklar: ${d.kaynaklar.join(", ") || "yok"}`
     : "sunucuya ulaşılamadı";
+  $("#altbilgi").title = d?.veritabani ? `Veritabanı: ${d.veritabani}` : "";
   const cip = $("#senk-cipi");
   const son = d?.son_senk;
   cip.className = "durum-cipi " + (son?.durum === "tamam" ? "tamam"
@@ -118,10 +119,17 @@ async function veriYenile() {
   } catch (hata) {
     DURUM.veri = null;
     const cevrimdisi = !navigator.onLine || /503/.test(hata.message);
+    const bos = /404/.test(hata.message);
     govde().innerHTML = `<div class="bos">${cevrimdisi
       ? "Çevrimdışısınız ve bu görünüm henüz önbelleğe alınmamış. " +
         "Bağlantı gelince panel kendiliğinden güncellenir."
-      : "Veri alınamadı."}<br>${kacis(hata.message)}</div>`;
+      : bos
+      ? "Veritabanı boş. <code>panel.db</code> dosyasını aşağıdaki yola koyup " +
+        "servisi yeniden başlatın:<br><br><code>" +
+        kacis(DURUM.durum?.veritabani || "veri/panel.db") + "</code><br><br>" +
+        "Ya da Streamlit sürümünden (<code>python -m streamlit run app.py</code>) " +
+        "WoS/Scopus dosyalarını yükleyin."
+      : "Veri alınamadı."}<br><br>${kacis(hata.message)}</div>`;
     return;
   }
   ciz();
@@ -420,6 +428,7 @@ function senkEkrani() {
       tabloHtml({
         sutunlar: ["Gösterge", "Değer"],
         satirlar: [
+          { Gösterge: "Veritabanı dosyası", Değer: d.veritabani },
           { Gösterge: "Kayıt", Değer: d.kayit },
           { Gösterge: "Personel satırı", Değer: d.personel },
           { Gösterge: "Adjunct adı", Değer: d.adjunct },

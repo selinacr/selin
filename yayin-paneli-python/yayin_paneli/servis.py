@@ -53,6 +53,7 @@ def durum() -> dict:
     gunluk = depo.senk_gunlugu(10)
     son = gunluk[0] if gunluk else None
     return {
+        "veritabani": str(depo.yol.resolve()),
         "kayit": len(veri["kurum_kayitlari"]),
         "personel": len(veri["personel"]),
         "adjunct": len(veri["adjunct"]),
@@ -77,7 +78,8 @@ def durum() -> dict:
 def analiz(kaynak: str = "hepsi", senaryo: str = "A", yil: str = "tumu") -> dict:
     panel = panel_kur(kaynak)
     if not panel.kayitlar:
-        raise HTTPException(404, "Henüz yayın verisi yok.")
+        raise HTTPException(404, f"Veritabanında hiç yayın kaydı yok. Okunan dosya: "
+                                 f"{depo.yol.resolve()}")
     zengin, bildiri = panel.zenginlestir()
     secili = panel.suzulmus(senaryo, yil)
     siniflanan = [k for k in secili if k["q"] in ("Q1", "Q2", "Q3", "Q4")]

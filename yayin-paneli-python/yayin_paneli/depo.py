@@ -8,11 +8,15 @@ gibi serbest biçimli veriler `veri(anahtar, icerik)` tablosunda JSON olarak kal
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-VARSAYILAN_YOL = Path(__file__).resolve().parent.parent / "veri" / "panel.db"
+# Veritabanı varsayılan olarak paketin yanındaki veri/panel.db dosyasıdır.
+# YAYIN_PANELI_DB ortam değişkeniyle başka bir dosya gösterilebilir.
+VARSAYILAN_YOL = Path(os.environ.get("YAYIN_PANELI_DB")
+                      or Path(__file__).resolve().parent.parent / "veri" / "panel.db")
 
 ALANLAR = {
     "personel": list, "adjunct": list, "ad_esleme": dict,
