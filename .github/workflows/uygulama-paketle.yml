@@ -40,9 +40,16 @@ jobs:
       - name: Mac — .app paketini sıkıştır
         if: matrix.ad == 'mac'
         run: |
-          # Imzasiz uygulamaya ad-hoc imza: Gatekeeper uyarisi tek seferlik kalir.
+          # Apple Developer sertifikasi olmadigi icin ad-hoc imza atilir. Internetten
+          # indirilen imzasiz uygulamayi Gatekeeper yine de engeller; zip'e konan
+          # "Kur.command" karantina bayragini kaldirip uygulamayi acar.
           codesign --force --deep --sign - "dist/Yayin Paneli.app" || true
-          ditto -c -k --sequesterRsrc --keepParent "dist/Yayin Paneli.app" "dist/YayinPaneli-mac.zip"
+          cp paketle/Kur.command "dist/Kur.command"
+          chmod +x "dist/Kur.command"
+          ditto -c -k --sequesterRsrc --keepParent "dist/Yayin Paneli.app" "dist/uygulama.zip"
+          mkdir -p dist/paket && mv "dist/uygulama.zip" dist/paket/
+          cp "dist/Kur.command" dist/paket/
+          ditto -c -k --sequesterRsrc dist/paket "dist/YayinPaneli-mac.zip"
 
       - name: Windows — klasörü sıkıştır
         if: matrix.ad == 'windows'

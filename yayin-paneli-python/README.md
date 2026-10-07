@@ -19,9 +19,19 @@ kararları kalıcı olur:
 - macOS: `~/Library/Application Support/YayinPaneli/panel.db`
 - Windows: `%APPDATA%\YayinPaneli\panel.db`
 
-**macOS ilk açılış:** uygulama Apple sertifikasıyla imzalı olmadığı için çift tıklama
-ilk seferde engellenebilir. Uygulamaya **sağ tık → Aç**, çıkan uyarıda yine **Aç** de;
-sonraki açılışlarda normal çalışır.
+**macOS ilk açılış.** Uygulama Apple Developer sertifikasıyla imzalı olmadığı için
+macOS onu engeller ("…Apple tarafından denetlenemediği için açılamıyor"). Zip'in içindeki
+**Kur.command** dosyasına çift tıkla — karantina bayrağını kaldırır, uygulamayı
+Uygulamalar klasörüne taşır ve açar. Tek seferlik.
+
+Kur.command da engellenirse Terminal'i aç (Spotlight → "Terminal") ve şunu yapıştır:
+
+```
+xattr -dr com.apple.quarantine "/Applications/Yayin Paneli.app"
+```
+
+Ya da terminal istemiyorsan: Sistem Ayarları → **Gizlilik ve Güvenlik** → sayfanın
+altında "Yayin Paneli engellendi" satırı → **Yine de Aç**.
 
 ---
 
