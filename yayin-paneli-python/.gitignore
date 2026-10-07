@@ -1,3 +1,5 @@
+# Dolu veritabani depoda tutulur ki ZIP indiren kisi hazir veriyle acsin.
 veri/*.db
+!veri/panel.db
 __pycache__/
 .pytest_cache/
