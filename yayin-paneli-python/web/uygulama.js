@@ -100,6 +100,7 @@ async function durumuYenile() {
       `kaynaklar: ${d.kaynaklar.join(", ") || "yok"}`
     : "sunucuya ulaşılamadı";
   $("#altbilgi").title = d?.veritabani ? `Veritabanı: ${d.veritabani}` : "";
+  $("#kapat-dugmesi").classList.toggle("gizli", !d?.paket);
   const cip = $("#senk-cipi");
   const son = d?.son_senk;
   cip.className = "durum-cipi " + (son?.durum === "tamam" ? "tamam"
@@ -489,6 +490,14 @@ function olaylariBagla() {
     document.documentElement.dataset.theme = koyu ? "light" : "dark";
     localStorage.setItem("tema", document.documentElement.dataset.theme);
     ciz();
+  });
+
+  $("#kapat-dugmesi").addEventListener("click", async () => {
+    if (!confirm("Panel kapatılsın mı? Bu pencereyi de kapatabilirsiniz.")) return;
+    await fetch("/api/kapat", { method: "POST" }).catch(() => {});
+    document.body.innerHTML =
+      '<div style="padding:60px;text-align:center;font:15px system-ui">' +
+      "Panel kapatıldı. Bu sekmeyi kapatabilirsiniz.</div>";
   });
 
   $("#senk-dugmesi").addEventListener("click", async (olay) => {

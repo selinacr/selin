@@ -1,0 +1,56 @@
+name: Uygulama paketi (Mac + Windows)
+
+# Python kurulumu gerektirmeyen, cift tiklanan uygulamayi uretir.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths:
+      - "yayin-paneli-python/**"
+      - ".github/workflows/uygulama-paketle.yml"
+
+jobs:
+  paket:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - isletim: macos-latest
+            ad: mac
+          - isletim: windows-latest
+            ad: windows
+    runs-on: ${{ matrix.isletim }}
+    defaults:
+      run:
+        working-directory: yayin-paneli-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bağımlılıklar
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install fastapi "uvicorn[standard]" pydantic pandas numpy openpyxl xlrd pyinstaller
+
+      - name: Paketle
+        run: python -m PyInstaller paketle/yayin-paneli.spec --noconfirm
+
+      - name: Mac — .app paketini sıkıştır
+        if: matrix.ad == 'mac'
+        run: |
+          # Imzasiz uygulamaya ad-hoc imza: Gatekeeper uyarisi tek seferlik kalir.
+          codesign --force --deep --sign - "dist/Yayin Paneli.app" || true
+          ditto -c -k --sequesterRsrc --keepParent "dist/Yayin Paneli.app" "dist/YayinPaneli-mac.zip"
+
+      - name: Windows — klasörü sıkıştır
+        if: matrix.ad == 'windows'
+        run: Compress-Archive -Path dist/YayinPaneli/* -DestinationPath dist/YayinPaneli-windows.zip
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YayinPaneli-uygulama-${{ matrix.ad }}
+          path: yayin-paneli-python/dist/*.zip
+          if-no-files-found: error

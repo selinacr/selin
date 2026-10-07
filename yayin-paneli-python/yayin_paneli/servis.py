@@ -8,6 +8,9 @@ ya da
 
 from __future__ import annotations
 
+import os
+import signal
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -21,7 +24,10 @@ from .depo import Depo
 from .eslesme import kuyrugu_tazele
 from .toplayici.zamanlayici import Zamanlayici
 
-WEB = Path(__file__).resolve().parent.parent / "web"
+# Paketlenmiş uygulamada web dosyaları gömülü klasörden gelir.
+WEB = Path(os.environ.get("YAYIN_PANELI_WEB")
+           or Path(__file__).resolve().parent.parent / "web")
+PAKET = os.environ.get("YAYIN_PANELI_PAKET") == "1"
 
 uygulama = FastAPI(title="Doğuş Üniversitesi Yayın Paneli", version="2.0")
 depo = Depo()
@@ -69,6 +75,7 @@ def durum() -> dict:
         "kaynaklar": sorted({(k.get("kaynak") or "WoS") for k in veri["kurum_kayitlari"]}),
         "ayarlar": depo.ayarlar(),
         "zamanlayici": zamanlayici.calisiyor,
+        "paket": PAKET,
         "son_senk": son,
         "gunluk": gunluk,
     }
@@ -199,6 +206,17 @@ def yeni_kayitlar(esik: str = "") -> dict:
             "kayitlar": [{"baslik": k.get("baslik"), "dergi": k.get("dergi"),
                           "yil": k.get("yil"), "kaynak": k.get("kaynak"),
                           "doi": k.get("doi")} for k in kayitlar[:50]]}
+
+
+@uygulama.post("/api/kapat")
+def kapat() -> dict:
+    """Paketlenmiş uygulamada paneli kapatır (terminal penceresi olmadığı için)."""
+    if not PAKET:
+        raise HTTPException(400, "Bu düğme yalnızca masaüstü uygulamasında çalışır; "
+                                 "servisi terminalden Ctrl+C ile durdurun.")
+    zamanlayici.dur()
+    threading.Timer(0.5, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
+    return {"durum": "kapatiliyor"}
 
 
 @uygulama.get("/manifest.webmanifest")

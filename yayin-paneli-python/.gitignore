@@ -3,3 +3,5 @@ veri/*.db
 !veri/panel.db
 __pycache__/
 .pytest_cache/
+build/
+dist/

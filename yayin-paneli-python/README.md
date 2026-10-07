@@ -3,6 +3,30 @@
 Kurumun WoS ve Scopus yayınlarını tek yerde toplayan, çeyreklik ve h-indeksi
 analizlerini iki kaynak için ayrı ayrı üreten panel. Mimari ayrıntılar: `MIMARI.md`.
 
+## En kolay yol: hazır uygulama (Python kurulumu gerekmez)
+
+1. GitHub'da bu deponun **Actions** sekmesini aç.
+2. **Uygulama paketi (Mac + Windows)** iş akışının en son başarılı çalışmasına gir.
+3. Sayfanın altından kendi işletim sistemine uyanı indir:
+   `YayinPaneli-uygulama-mac` ya da `YayinPaneli-uygulama-windows`.
+4. Zip'i aç ve uygulamaya çift tıkla. Panel tarayıcıda kendiliğinden açılır.
+
+Kapatmak için panelin sağ üstündeki **Kapat** düğmesi yeterli.
+
+Veritabanı ilk açılışta kullanıcı klasörüne kopyalanır, böylece senkron ve onay
+kararları kalıcı olur:
+
+- macOS: `~/Library/Application Support/YayinPaneli/panel.db`
+- Windows: `%APPDATA%\YayinPaneli\panel.db`
+
+**macOS ilk açılış:** uygulama Apple sertifikasıyla imzalı olmadığı için çift tıklama
+ilk seferde engellenebilir. Uygulamaya **sağ tık → Aç**, çıkan uyarıda yine **Aç** de;
+sonraki açılışlarda normal çalışır.
+
+---
+
+## Kaynaktan çalıştırmak
+
 ## Kurulum
 
 Terminalde (Windows'ta Anaconda Prompt, macOS'ta Terminal) bu klasörde:
