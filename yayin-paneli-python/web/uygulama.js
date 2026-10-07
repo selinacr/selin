@@ -117,7 +117,11 @@ async function veriYenile() {
     yilSeciciyiDoldur();
   } catch (hata) {
     DURUM.veri = null;
-    govde().innerHTML = `<div class="bos">Veri alınamadı.<br>${kacis(hata.message)}</div>`;
+    const cevrimdisi = !navigator.onLine || /503/.test(hata.message);
+    govde().innerHTML = `<div class="bos">${cevrimdisi
+      ? "Çevrimdışısınız ve bu görünüm henüz önbelleğe alınmamış. " +
+        "Bağlantı gelince panel kendiliğinden güncellenir."
+      : "Veri alınamadı."}<br>${kacis(hata.message)}</div>`;
     return;
   }
   ciz();

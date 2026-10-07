@@ -22,14 +22,21 @@ self.addEventListener("fetch", (olay) => {
   if (adres.origin !== self.location.origin) return;
 
   if (adres.pathname.startsWith("/api/")) {
-    olay.respondWith(
-      fetch(istek).then((yanit) => {
-        caches.open(VERI).then((k) => k.put(istek, yanit.clone()));
+    olay.respondWith((async () => {
+      try {
+        const yanit = await fetch(istek);
+        if (yanit.ok) {
+          const kopya = yanit.clone();
+          olay.waitUntil(caches.open(VERI).then((k) => k.put(istek, kopya)));
+        }
         return yanit;
-      }).catch(() => caches.match(istek).then((eski) => eski || new Response(
-        JSON.stringify({ hata: "Çevrimdışı ve önbellekte bu veri yok." }),
-        { status: 503, headers: { "Content-Type": "application/json" } })))
-    );
+      } catch (hata) {
+        const eski = await caches.match(istek, { cacheName: VERI });
+        return eski || new Response(
+          JSON.stringify({ hata: "Çevrimdışı ve önbellekte bu veri yok." }),
+          { status: 503, headers: { "Content-Type": "application/json" } });
+      }
+    })());
     return;
   }
 

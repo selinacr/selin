@@ -12,33 +12,42 @@ yayın performansını izliyor, yayın teşvik (BEDEK) süreçlerini yürütüyo
 dış) öğretim üyelerinin yayın bazlı ödemelerini takip ediyorum. Rektörlük ve birimler için
 yıllık/dönemsel yayın raporları hazırlıyorum.
 
-## Elimdeki panel
+## Elimdeki panel (sürüm 2)
 
-İki ayrı uygulama olarak yazıldı, ikisi de aynı mantığı paylaşıyor:
+Tek bir Python çekirdeği, üç arayüz:
 
-1. **Web paneli** — `yayin-paneli/index.html`. Tek dosyalık HTML/JS uygulaması (Claude
-   Artifact olarak yayında, verileri artifact veritabanında saklıyor). Excel/CSV dosyalarını
-   tarayıcıda SheetJS ile okuyor.
-2. **Python sürümü** — `yayin-paneli-python/`. Streamlit arayüzü + SQLite veritabanı.
-   `yayin_paneli/` paketi: `metin.py` (isim normalleştirme), `ayristirma.py` (dosya
-   çözümleyiciler), `analiz.py` (tüm analiz mantığı), `aylik.py` (adjunct ödeme dönemleri),
-   `depo.py` (SQLite). `testler/test_panel.py` altında 18 test var.
-3. **Masaüstü sarmalayıcı** — `yayin-paneli-masaustu/`. Web panelini Electron ile masaüstü
-   uygulaması olarak açıyor; GitHub Actions ile Windows .exe üretiliyor.
+1. **PWA arayüzü** — `yayin-paneli-python/web/`. `python -m yayin_paneli.servis` ile
+   açılan FastAPI servisi (127.0.0.1:8787) bunu sunar. Koyu/açık tema, bağımlılıksız SVG
+   grafikler, hizmet işçisiyle çevrimdışı açılış, masaüstü ve telefona "uygulama olarak
+   yükle". Ana arayüz budur.
+2. **Streamlit sürümü** — `yayin-paneli-python/app.py`. Aynı veritabanı; dosya yükleme
+   ekranları için pratik.
+3. **Masaüstü sarmalayıcı** — `yayin-paneli-masaustu/`. Electron, yerel servise bağlanır;
+   GitHub Actions ile Windows .exe üretiliyor.
 
-Windows'ta Anaconda ile çalıştırıyorum (`baslat.bat`). Paket adı bilerek `yayin_paneli`;
-Anaconda'nın kendi `panel` paketi ile çakışıyordu.
+Çekirdek `yayin_paneli/` paketi: `metin.py` (isim normalleştirme), `ayristirma.py` (dosya
+çözümleyiciler), `analiz.py` (analiz mantığı), `eslesme.py` (takma ad + onay kuyruğu),
+`aylik.py` (adjunct ödemeleri), `depo.py` (SQLite şeması), `toplayici/` (WoS/Scopus
+otomatik toplama + saatlik zamanlayıcı), `servis.py` (JSON API). Mimari: `MIMARI.md`.
+39 test var (`python -m pytest testler -q`).
+
+`yayin-paneli/index.html` sürüm 1'in tek dosyalık arayüzüdür; arşivde duruyor,
+geliştirilmiyor.
+
+Windows'ta Anaconda ile çalıştırıyorum (`baslat_panel.bat`). Paket adı bilerek
+`yayin_paneli`; Anaconda'nın kendi `panel` paketi ile çakışıyordu.
 
 ## Panelin iki modu
 
 **A) Kurum yayın paneli** — üniversitenin tüm yayınları.
 Girdi dosyaları:
-- WoS "Full Record" Excel dosyaları, yıl yıl (2022–2026).
+- WoS "Full Record" Excel dosyaları, yıl yıl (2022–2026) — ya da WoS Starter API.
 - Scopus CSV export'ları (Authors, Author full names, Title, Year, Cited by, DOI,
-  Document Type, Open Access, EID).
+  Document Type, Open Access, EID) — ya da Scopus Search API.
 - Personel listesi Excel'i (ad, soyad, unvan, fakülte/birim, giriş–çıkış tarihi, akademik mi).
-- SCImago SJR CSV'leri (yıl bazlı, çeyreklik eşleştirmesi için).
-- OpenAlex yazar JSON sayfaları (atıf sayısı ve h-indeksi için; kurum id `I129994210`).
+- Çeyreklik: WoS için JCR dışa aktarımı, Scopus için Sources/CiteScore dosyası
+  (ya da ilgili API uçları). OpenAlex ve SCImago SJR artık kullanılmıyor.
+- h-indeksi ve atıf: WoS ve Scopus yazar profilleri, kaynak bazında ayrı saklanır.
 
 **B) Adjunct paneli** — sözleşmeli dış öğretim üyelerinin dönemsel yayın ödemeleri.
 Girdi: aylık "Makale Puantaj" Excel'leri. Kayıtları panelden elle de düzenleyebiliyorum.
@@ -51,10 +60,13 @@ Girdi: aylık "Makale Puantaj" Excel'leri. Kayıtları panelden elle de düzenle
   Kaynak seçimi WoS / Scopus / birleşik olarak filtrelenebilir.
 - **İsim eşleştirme:** Türkçe–İngilizce yazım farkları yüzünden aynı kişi ayrı görünebiliyor
   (Shahram Minaei = ŞAHRAM MİNAYİ, M. I. Sayyed = Abualsayed Mohamad Ibrahim,
-  Pamučar, Šimić gibi diyakritikler). `sade()` Türkçe + NFD normalleştirme, `fonetik()`
-  fonetik anahtar, `adlar_uyuyor()` katı mod, artı elle tanımlı takma ad listesi kullanılıyor.
-  Yanlış birleştirmeler oldu (Aydin/Ali Murat ↔ Muhammed Ali Aydın gibi), bu yüzden fonetik
-  katman katı modda çalışıyor.
+  Pamučar, Šimić gibi diyakritikler). Kesin eşleşme otomatik bağlanır; şüpheli olanlar
+  **onay kuyruğuna** düşer ve panelden tek tıkla onaylanır. Karar takma ad tablosuna
+  yazılır, bir daha sorulmaz. Yanlış otomatik birleştirmeler (Abanoz, Yasin ↔ YEŞİM
+  ABANOZ gibi) bu yüzden artık otomatik yapılmıyor.
+- **Çeyreklik iki kaynakta ayrı:** her yayın hem `q_wos` (JCR) hem `q_scopus`
+  (CiteScore/SJR) taşır; panelde yan yana karşılaştırılır. Sürüm 1'den devralınan eski
+  liste yalnızca boşluk doldurur.
 - **Personel sayımı:** Listede kaydı olan her akademik personel paydaya girer; yıl içinde
   ayrılanlar da o yıl çalıştığı için sayılır. (Toplam 524 akademik kayıt.)
 - **Senaryo A / B:** A adjunct yayınlarını dahil eder, B hariç tutar. Her iki sonuç yan yana
