@@ -1,0 +1,29 @@
+YAYIN PANELİ — macOS KURULUMU
+================================
+
+Uygulama Apple'ın ücretli geliştirici sertifikasıyla imzalanmadığı için macOS onu
+ilk açılışta engeller. Bu normaldir ve tek seferliktir.
+
+ADIM 1
+  "Yayin Paneli" uygulamasını bu klasörden Uygulamalar klasörüne sürükleyin.
+
+ADIM 2
+  Spotlight'ı açın (Cmd + Boşluk), "Terminal" yazıp Enter'a basın.
+  Açılan pencereye aşağıdaki satırı olduğu gibi yapıştırın ve Enter'a basın:
+
+      xattr -dr com.apple.quarantine "/Applications/Yayin Paneli.app"
+
+  Hiçbir şey yazmazsa işlem başarılıdır.
+
+ADIM 3
+  Uygulamaya çift tıklayın. Panel tarayıcıda kendiliğinden açılır.
+  Bir daha bu adımları yapmanız gerekmez.
+
+
+NOT: Bu klasördeki "Kur.command" dosyası aynı işi yapar ama macOS onu da
+engelleyebilir. Engellenirse yukarıdaki Terminal adımını kullanın.
+
+Paneli kapatmak için sağ üstteki "Kapat" düğmesine basın.
+
+Verileriniz şurada saklanır (uygulamayı güncellemek bunu silmez):
+  ~/Library/Application Support/YayinPaneli/panel.db

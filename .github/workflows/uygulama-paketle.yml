@@ -46,9 +46,11 @@ jobs:
           codesign --force --deep --sign - "dist/Yayin Paneli.app" || true
           cp paketle/Kur.command "dist/Kur.command"
           chmod +x "dist/Kur.command"
+          # Duz metin dosyasi Gatekeeper tarafindan engellenmez; komut orada yazili.
+          cp paketle/OKU-ONCE.txt "dist/OKU-ONCE.txt"
           ditto -c -k --sequesterRsrc --keepParent "dist/Yayin Paneli.app" "dist/uygulama.zip"
           mkdir -p dist/paket && mv "dist/uygulama.zip" dist/paket/
-          cp "dist/Kur.command" dist/paket/
+          cp "dist/Kur.command" "dist/OKU-ONCE.txt" dist/paket/
           ditto -c -k --sequesterRsrc dist/paket "dist/YayinPaneli-mac.zip"
 
       - name: Windows — klasörü sıkıştır
