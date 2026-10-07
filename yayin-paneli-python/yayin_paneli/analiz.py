@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from .ayristirma import INDEKS_ACIKLAMALARI, INDEKS_ADLARI
+from .ayristirma import INDEKS_ACIKLAMALARI, INDEKS_ADLARI, issn_sade
 from .metin import ad_eslesiyor_mu, sade, yazar_adi_coz
 
 Q_SIRASI = ["Q1", "Q2", "Q3", "Q4", "Sınıflandırılamayan", "Bildiri"]
@@ -141,13 +141,16 @@ class Panel:
     personel: list[dict] = field(default_factory=list)
     adjunct: list[str] = field(default_factory=list)
     ad_esleme: dict[str, str] = field(default_factory=dict)
-    quartiller: dict[int, dict[str, str]] = field(default_factory=dict)
-    metrikler: list[dict] = field(default_factory=list)
+    dergi_metrikleri: list[dict] = field(default_factory=list)
+    kisi_metrikleri: list[dict] = field(default_factory=list)
+    takma_adlar: dict[str, str] = field(default_factory=dict)
     kaynak_secimi: str = "hepsi"
 
     # --- yardımcılar -------------------------------------------------
     def _esleme_haritasi(self) -> dict[str, str]:
+        """Elle girilen takma adlar + onaylanmış eşleşmeler + adjunct varyasyonları."""
         harita = {sade(k): v for k, v in self.ad_esleme.items()}
+        harita.update({sade(k): v for k, v in self.takma_adlar.items()})
         for satir in self.adjunct:
             cozum = adjunct_satiri_coz(satir)
             if cozum:
@@ -168,34 +171,80 @@ class Panel:
         kayitlar[ham] = yazar
         return yazar
 
-    def quartile_haritasi(self, yil: int) -> dict[str, str] | None:
-        """O yılın SJR listesi; yoksa en yakın önceki yıl kullanılır."""
-        if not self.quartiller:
-            return None
-        if yil in self.quartiller:
-            return self.quartiller[yil]
-        yillar = sorted(self.quartiller)
-        oncekiler = [y for y in yillar if y <= yil]
-        return self.quartiller[oncekiler[-1] if oncekiler else yillar[0]]
+    def _q_dizini(self) -> dict[str, dict]:
+        """(kaynak, issn|dergi) → yıl → Q. En iyi (en küçük) çeyreklik tutulur."""
+        if getattr(self, "_q_bellek", None) is not None:
+            return self._q_bellek
+        dizin: dict[str, dict] = {}
+        for satir in self.dergi_metrikleri:
+            q = satir.get("q")
+            if q not in Q_SIRASI[:4]:
+                continue
+            kaynak = satir.get("kaynak") or "miras"
+            yil = int(satir.get("yil") or 0)
+            etiketler = []
+            if satir.get("issn"):
+                etiketler.append(f"i:{satir['issn']}")
+            if satir.get("dergi"):
+                etiketler.append(f"d:{sade(satir['dergi'])}")
+            for etiket in etiketler:
+                yillar = dizin.setdefault(f"{kaynak}|{etiket}", {})
+                mevcut = yillar.get(yil)
+                if not mevcut or q < mevcut:
+                    yillar[yil] = q
+        self._q_bellek = dizin
+        return dizin
 
-    def quartile_yili(self, yil: int) -> int | None:
-        if not self.quartiller:
+    def _dergi_q(self, kaynak: str, kayit: dict) -> tuple[str | None, int | None]:
+        """Bir kaydın o kaynaktaki çeyrekliği ve kullanılan metrik yılı."""
+        dizin = self._q_dizini()
+        yil = int(kayit.get("yil") or 0)
+        etiketler = [f"i:{issn_sade(kayit.get(alan))}" for alan in ("issn", "eissn")
+                     if kayit.get(alan)]
+        if kayit.get("dergi"):
+            etiketler.append(f"d:{sade(kayit['dergi'])}")
+        for etiket in etiketler:
+            yillar = dizin.get(f"{kaynak}|{etiket}")
+            if not yillar:
+                continue
+            adaylar = sorted(yillar)
+            oncekiler = [y for y in adaylar if y <= yil] or adaylar
+            metrik_yili = oncekiler[-1]
+            return yillar[metrik_yili], metrik_yili
+        return None, None
+
+    def quartile_yili(self, kaynak: str, yil: int) -> int | None:
+        dizin = self._q_dizini()
+        yillar = sorted({y for anahtar, harita in dizin.items() if anahtar.startswith(f"{kaynak}|")
+                         for y in harita})
+        if not yillar:
             return None
-        if yil in self.quartiller:
-            return yil
-        yillar = sorted(self.quartiller)
         oncekiler = [y for y in yillar if y <= yil]
         return oncekiler[-1] if oncekiler else yillar[0]
 
-    def _kayit_quartile(self, kayit: dict) -> str:
+    def _kayit_quartile(self, kayit: dict) -> dict:
+        """Kaydın WoS ve Scopus çeyrekliklerini ve etkin `q` değerini döndürür."""
         if bildiri_mi(kayit) or any("CPCI" in i for i in kayit.get("indeksler", [])):
-            return "Bildiri"
-        harita = self.quartile_haritasi(kayit.get("yil") or 0)
-        if harita:
-            for issn in (kayit.get("issn"), kayit.get("eissn")):
-                if issn and issn in harita:
-                    return harita[issn]
-        return "Sınıflandırılamayan"
+            return {"q": "Bildiri", "q_wos": "Bildiri", "q_scopus": "Bildiri", "q_kaynagi": "—"}
+        q_wos, _ = self._dergi_q("WoS", kayit)
+        q_scopus, _ = self._dergi_q("Scopus", kayit)
+        devralinan, _ = self._dergi_q("miras", kayit)
+        secim = self.kaynak_secimi
+        if secim == "WoS":
+            etkin, kaynagi = q_wos, "WoS"
+        elif secim == "Scopus":
+            etkin, kaynagi = q_scopus, "Scopus"
+        else:
+            etkin, kaynagi = (q_wos, "WoS") if q_wos else (q_scopus, "Scopus")
+        if not etkin and devralinan:
+            etkin, kaynagi = devralinan, "devralınan"
+        return {
+            "q": etkin or "Sınıflandırılamayan",
+            "q_wos": q_wos or "—",
+            "q_scopus": q_scopus or "—",
+            "q_devralinan": devralinan or "—",
+            "q_kaynagi": kaynagi if etkin else "—",
+        }
 
     # --- çekirdek ----------------------------------------------------
     def zenginlestir(self) -> tuple[list[dict], int]:
@@ -259,17 +308,20 @@ class Panel:
                     kurum_adlari.append(yazar.ham)
             zengin.append({
                 **kayit, "eslesen": eslesen, "adjunct_var": adjunct_var,
-                "q": self._kayit_quartile(kayit),
+                **self._kayit_quartile(kayit),
                 "kurum_yazarlari": kurum_adlari if kayit.get("adres_yok") else kayit.get("kurum_yazarlari", []),
                 "oa_var": bool(str(kayit.get("oa") or "").strip()),
             })
 
-        # ISSN'i olmayan kayıtlar için dergi adından çeyreklik
-        dergi_q = {sade(k["dergi"]): k["q"] for k in zengin if k["q"] in Q_SIRASI[:4] and k.get("dergi")}
-        for kayit in zengin:
-            if kayit["q"] == "Sınıflandırılamayan" and dergi_q.get(sade(kayit.get("dergi"))):
-                kayit["q"] = dergi_q[sade(kayit["dergi"])]
-                kayit["q_dergiden"] = True
+        # ISSN'i tutmayan kayıtlar için aynı dergide bilinen çeyreklikten tamamlama
+        for alan in ("q", "q_wos", "q_scopus"):
+            bilinen = {sade(k["dergi"]): k[alan] for k in zengin
+                       if k.get(alan) in Q_SIRASI[:4] and k.get("dergi")}
+            for kayit in zengin:
+                if kayit.get(alan) in ("Sınıflandırılamayan", "—", None) \
+                        and bilinen.get(sade(kayit.get("dergi"))):
+                    kayit[alan] = bilinen[sade(kayit["dergi"])]
+                    kayit[f"{alan}_dergiden"] = True
         return zengin, bildiri
 
     def suzulmus(self, senaryo: str = "A", yil: str = "tumu") -> list[dict]:
@@ -345,8 +397,10 @@ class Panel:
         siniflanan_b = sum(1 for k in b if k["q"] in Q_SIRASI[:4])
         q1a = sum(1 for k in a if k["q"] == "Q1")
         q1b = sum(1 for k in b if k["q"] == "Q1")
-        eslemeler = ", ".join(f"{y} → {self.quartile_yili(y)}"
-                              for y in sorted({k["yil"] for k in a if k["yil"]}))
+        kaynak = self.kaynak_secimi if self.kaynak_secimi in ("WoS", "Scopus") else "WoS"
+        eslemeler = ", ".join(f"{y} → {self.quartile_yili(kaynak, y)}"
+                              for y in sorted({k["yil"] for k in a if k["yil"]})
+                              if self.quartile_yili(kaynak, y))
         not_metni = (
             f"Sınıflandırılabilen yayınlarda Q1 payı — A: %{100 * q1a / siniflanan_a:.1f}"
             f", B: %{100 * q1b / siniflanan_b:.1f}. " if siniflanan_a and siniflanan_b else ""
@@ -408,31 +462,88 @@ class Panel:
                      f"{eslesmeyen} yayın hiçbir personel kaydıyla eşleşmedi.")
         return cerceve, not_metni
 
+    def _kisi_anahtari(self, ham_ad: str, dizin, adjunctlar, harita, bellek) -> str | None:
+        """Ham yazar adını personel/adjunct anahtarına çevirir."""
+        yazar = self._ad_coz(ham_ad, harita, bellek)
+        if not yazar or not yazar.soyad:
+            return None
+        adjunct = next((a for a in adjunctlar if ad_eslesiyor_mu(yazar, a.anahtar)), None)
+        if adjunct:
+            return f"a:{sade(adjunct.etiket)}"
+        kisi = dizin.bul(yazar)
+        return f"p:{sade(kisi.ad)} {sade(kisi.soyad)}" if kisi else None
+
     def metrik_dizini(self) -> dict[str, dict]:
-        """OpenAlex profillerini kişilere bağlar; atıflar toplanır, h'nin en büyüğü alınır."""
+        """WoS ve Scopus yazar profillerini kişilere bağlar.
+
+        Aynı kişinin birden çok profili olabilir: atıflar toplanır, h-indeksinin en
+        büyüğü alınır. Her kaynak ayrı tutulur (h_wos, h_scopus).
+        """
         kisiler = personel_dizini(self.personel)
         adjunctlar = [a for a in (adjunct_satiri_coz(s) for s in self.adjunct) if a]
         dizin = AdayDizini(kisiler)
         harita = self._esleme_haritasi()
-        ad_bellegi: dict = {}
+        bellek: dict = {}
         sonuc: dict[str, dict] = {}
-        for kayit in self.metrikler:
-            yazar = self._ad_coz(kayit["ad"], harita, ad_bellegi)
-            if not yazar or not yazar.soyad:
+        for kayit in self.kisi_metrikleri:
+            anahtar = self._kisi_anahtari(kayit.get("ad", ""), dizin, adjunctlar, harita, bellek)
+            if not anahtar:
                 continue
-            adjunct = next((a for a in adjunctlar if ad_eslesiyor_mu(yazar, a.anahtar)), None)
-            if adjunct:
-                anahtar = f"a:{sade(adjunct.etiket)}"
-            else:
-                kisi = dizin.bul(yazar)
-                if not kisi:
-                    continue
-                anahtar = f"p:{sade(kisi.ad)} {sade(kisi.soyad)}"
-            mevcut = sonuc.setdefault(anahtar, {"atif": 0, "h": 0, "profil": 0})
-            mevcut["atif"] += kayit["atif"]
-            mevcut["h"] = max(mevcut["h"], kayit["h"])
+            kaynak = kayit.get("kaynak") or "miras"
+            hucre = sonuc.setdefault(anahtar, {})
+            mevcut = hucre.setdefault(kaynak, {"h": 0, "atif": 0, "yayin": 0, "profil": 0})
+            mevcut["h"] = max(mevcut["h"], int(kayit.get("h") or 0))
+            mevcut["atif"] += int(kayit.get("atif") or 0)
+            mevcut["yayin"] += int(kayit.get("yayin") or 0)
             mevcut["profil"] += 1
         return sonuc
+
+    def kisi_q_dagilimi(self, senaryo: str = "A", yil: str = "tumu") -> pd.DataFrame:
+        """Kişi × çeyreklik dağılımı; WoS ve Scopus kolonları ayrı."""
+        kisiler = personel_dizini(self.personel)
+        adjunctlar = [a for a in (adjunct_satiri_coz(s) for s in self.adjunct) if a]
+        dizin = AdayDizini(kisiler)
+        harita = self._esleme_haritasi()
+        bellek: dict = {}
+        etiketler = {f"p:{sade(k.ad)} {sade(k.soyad)}": k.tam_ad for k in kisiler}
+        etiketler.update({f"a:{sade(a.etiket)}": a.etiket for a in adjunctlar})
+        gruplar: dict[str, dict] = {}
+        for kayit in self.suzulmus(senaryo, yil):
+            for ham_ad in {*kayit.get("kurum_yazarlari", [])}:
+                anahtar = self._kisi_anahtari(ham_ad, dizin, adjunctlar, harita, bellek)
+                if not anahtar:
+                    continue
+                grup = gruplar.setdefault(anahtar, {"Kişi": etiketler.get(anahtar, ham_ad),
+                                                    "Yayın": 0,
+                                                    **{f"WoS {q}": 0 for q in Q_SIRASI[:4]},
+                                                    **{f"Scopus {q}": 0 for q in Q_SIRASI[:4]}})
+                grup["Yayın"] += 1
+                for onek, alan in (("WoS", "q_wos"), ("Scopus", "q_scopus")):
+                    q = kayit.get(alan)
+                    if q in Q_SIRASI[:4]:
+                        grup[f"{onek} {q}"] += 1
+        cerceve = pd.DataFrame(list(gruplar.values()))
+        return cerceve.sort_values("Yayın", ascending=False, ignore_index=True) \
+            if not cerceve.empty else cerceve
+
+    def quartile_karsilastirma(self, senaryo: str = "A", yil: str = "tumu") -> pd.DataFrame:
+        """Aynı yayın kümesinin WoS ve Scopus çeyrekliklerini yan yana verir."""
+        kayitlar = self.suzulmus(senaryo, yil)
+        satirlar = []
+        for q in Q_SIRASI[:4] + ["Sınıflandırılamayan"]:
+            hedef = q if q in Q_SIRASI[:4] else None
+            wos = sum(1 for k in kayitlar if (k.get("q_wos") == hedef if hedef
+                                              else k.get("q_wos") in ("—", None)))
+            scopus = sum(1 for k in kayitlar if (k.get("q_scopus") == hedef if hedef
+                                                 else k.get("q_scopus") in ("—", None)))
+            satirlar.append({
+                "Çeyreklik": q, "WoS (JCR)": wos,
+                "WoS payı": f"%{100 * wos / len(kayitlar):.1f}".replace(".", ",") if kayitlar else "·",
+                "Scopus (CiteScore/SJR)": scopus,
+                "Scopus payı": f"%{100 * scopus / len(kayitlar):.1f}".replace(".", ",") if kayitlar else "·",
+                "Fark": wos - scopus,
+            })
+        return pd.DataFrame(satirlar)
 
     def kisi_bazli(self, senaryo: str = "A", yil: str = "tumu") -> tuple[pd.DataFrame, str]:
         kisiler = personel_dizini(self.personel)
@@ -442,7 +553,7 @@ class Panel:
         ad_bellegi: dict = {}
         kayitlar = self.suzulmus(senaryo, yil)
         yillar = sorted({k["yil"] for k in kayitlar if k["yil"]})
-        metrikler = self.metrik_dizini() if self.metrikler else {}
+        metrikler = self.metrik_dizini() if self.kisi_metrikleri else {}
         gruplar: dict[str, dict] = {}
 
         for kayit in kayitlar:
@@ -481,15 +592,17 @@ class Panel:
             for y in yillar:
                 satir[str(y)] = grup["yillar"].get(y, 0)
             if metrikler:
-                metrik = metrikler.get(anahtar)
-                satir["Atıf (OpenAlex)"] = metrik["atif"] if metrik else None
-                satir["h (OpenAlex)"] = metrik["h"] if metrik else None
+                metrik = metrikler.get(anahtar) or {}
+                for onek, kaynak in (("WoS", "WoS"), ("Scopus", "Scopus")):
+                    hucre = metrik.get(kaynak) or {}
+                    satir[f"h ({onek})"] = hucre.get("h") or None
+                    satir[f"Atıf ({onek})"] = hucre.get("atif") or None
             satirlar.append(satir)
 
         sutunlar = ["Kişi", "Durum", "Unvan", "Fakülte", *[str(y) for y in yillar],
                     "Yayın", "Açık erişim"]
         if metrikler:
-            sutunlar += ["Atıf (OpenAlex)", "h (OpenAlex)"]
+            sutunlar += ["h (WoS)", "h (Scopus)", "Atıf (WoS)", "Atıf (Scopus)"]
         cerceve = (pd.DataFrame(satirlar)[sutunlar]
                    .sort_values("Yayın", ascending=False, ignore_index=True)) if satirlar \
             else pd.DataFrame(columns=sutunlar)

@@ -12,11 +12,21 @@ import streamlit as st
 
 from yayin_paneli.analiz import Panel
 from yayin_paneli.aylik import AdjunctPanel, ay_ayristir, donem_adi
-from yayin_paneli.ayristirma import (openalex_ayristir, personel_ayristir, satirlari_oku,
-                              scopus_ayristir, sjr_ayristir, wos_ayristir)
+from yayin_paneli.ayristirma import (jcr_ayristir, personel_ayristir, satirlari_oku,
+                                     scopus_ayristir, scopus_kaynak_ayristir, wos_ayristir,
+                                     yazar_metrik_ayristir)
 from yayin_paneli.depo import Depo
+from yayin_paneli.eslesme import kuyrugu_tazele
 
 st.set_page_config(page_title="Yayın Paneli", page_icon="📑", layout="wide")
+
+
+def _dosya_yili(ad: str) -> int | None:
+    """Dosya adındaki dört haneli yılı bulur (JCR 2024.csv gibi)."""
+    for parca in str(ad).replace(".", " ").replace("_", " ").replace("-", " ").split():
+        if parca.isdigit() and len(parca) == 4 and 1990 < int(parca) < 2100:
+            return int(parca)
+    return None
 
 
 @st.cache_resource
@@ -36,9 +46,8 @@ def yenile() -> None:
 def kurum_paneli(veri: dict) -> Panel:
     return Panel(
         kayitlar=veri["kurum_kayitlari"], personel=veri["personel"], adjunct=veri["adjunct"],
-        ad_esleme=veri["ad_esleme"],
-        quartiller={int(y): h for y, h in veri["quartiller"].items()},
-        metrikler=veri["metrikler"],
+        ad_esleme=veri["ad_esleme"], takma_adlar=veri["takma_adlar"],
+        dergi_metrikleri=veri["dergi_metrikleri"], kisi_metrikleri=veri["kisi_metrikleri"],
     )
 
 
@@ -87,10 +96,12 @@ def kurum_ekrani(veri: dict) -> None:
     st.caption(f"{yillar[0]}–{yillar[-1]} · {len(zengin)} tekil yayın · "
                f"{len(veri['personel'])} personel satırı · {len(veri['adjunct'])} adjunct adı · "
                f"{bildiri} bildiri analiz dışı · "
-               f"çeyreklik listeleri: {', '.join(sorted(veri['quartiller'])) or 'yok'}")
+               f"dergi metriği: {len(veri['dergi_metrikleri'])} satır · "
+               f"yazar metriği: {len(veri['kisi_metrikleri'])} profil")
 
-    sekmeler = st.tabs(["Özet", "Yıl bazlı", "Çeyreklik", "İndeks", "Açık erişim",
-                        "Fakülte", "Kişi bazlı", "Dergi"])
+    sekmeler = st.tabs(["Özet", "Yıl bazlı", "Çeyreklik", "WoS ↔ Scopus Q", "İndeks",
+                        "Açık erişim", "Fakülte", "Kişi bazlı", "Kişi × Q", "Dergi",
+                        "Onay kuyruğu"])
     with sekmeler[0]:
         st.dataframe(panel.ozet(yil), use_container_width=True, hide_index=True)
     with sekmeler[1]:
@@ -100,16 +111,22 @@ def kurum_ekrani(veri: dict) -> None:
         st.dataframe(cerceve, use_container_width=True, hide_index=True)
         st.caption(notu)
     with sekmeler[3]:
+        st.dataframe(panel.quartile_karsilastirma(senaryo_kodu, yil),
+                     use_container_width=True, hide_index=True)
+        st.caption("Aynı yayın kümesinin iki kaynaktaki çeyrekliği. WoS kolonu JCR, Scopus "
+                   "kolonu CiteScore/SJR değerlerinden gelir; biri bilinmiyorsa o yayın "
+                   "o kolonda sınıflandırılamayan sayılır.")
+    with sekmeler[4]:
         st.dataframe(panel.indeks(yil), use_container_width=True, hide_index=True)
         st.caption("CPCI satırları konferans bildirisi indeksleridir; bildiriler analiz dışıdır.")
-    with sekmeler[4]:
+    with sekmeler[5]:
         st.dataframe(panel.acik_erisim(), use_container_width=True, hide_index=True)
         st.caption("Açık erişim yalnızca var/yok olarak sayılır (gold, green ayrımı yapılmaz).")
-    with sekmeler[5]:
+    with sekmeler[6]:
         cerceve, notu = panel.fakulte(senaryo_kodu, yil)
         st.dataframe(cerceve, use_container_width=True, hide_index=True)
         st.caption(notu)
-    with sekmeler[6]:
+    with sekmeler[7]:
         cerceve, notu = panel.kisi_bazli(senaryo_kodu, yil)
         arama = st.text_input("Kişi ara", "")
         if arama:
@@ -118,8 +135,43 @@ def kurum_ekrani(veri: dict) -> None:
         st.caption(notu)
         st.download_button("CSV indir", cerceve.to_csv(index=False).encode("utf-8-sig"),
                            "kisi_bazli.csv", "text/csv")
-    with sekmeler[7]:
+    with sekmeler[8]:
+        st.dataframe(panel.kisi_q_dagilimi(senaryo_kodu, yil),
+                     use_container_width=True, hide_index=True, height=520)
+        st.caption("Kişi başına çeyreklik dağılımı; WoS ve Scopus kolonları ayrı sayılır.")
+    with sekmeler[9]:
         st.dataframe(panel.dergi(senaryo_kodu, yil).head(100), use_container_width=True, hide_index=True)
+    with sekmeler[10]:
+        onay_ekrani()
+
+
+def onay_ekrani() -> None:
+    """Eşleşmesi şüpheli isimler için onay kuyruğu."""
+    if st.button("Kuyruğu yeniden hesapla"):
+        ozet = kuyrugu_tazele(depo())
+        st.success(f"{ozet['kesin']} kesin eşleşme, {ozet['bekleyen']} onay bekliyor, "
+                   f"{ozet['eslesmeyen']} ada aday bulunamadı.")
+    bekleyen = depo().kuyruk()
+    if not bekleyen:
+        st.info("Onay bekleyen isim yok.")
+        return
+    st.caption(f"{len(bekleyen)} isim onay bekliyor. Aday seçip onaylayın ya da "
+               "«listede yok» olarak işaretleyin; karar bir daha sorulmaz.")
+    for kayit in bekleyen[:60]:
+        sutun = st.columns([3, 4, 1, 1])
+        sutun[0].markdown(f"**{kayit['ham']}**  \n`{kayit['kaynak'] or 'kaynak yok'}` "
+                          f"· benzerlik {kayit['benzerlik']}")
+        secenekler = [f"{a['hedef']} — {a['unvan']}, {a['fakulte']} ({a['puan']})"
+                      for a in kayit["adaylar"]]
+        secim = sutun[1].selectbox("Aday", secenekler, key=f"aday-{kayit['id']}",
+                                   label_visibility="collapsed")
+        aday = kayit["adaylar"][secenekler.index(secim)]
+        if sutun[2].button("onayla", key=f"onay-{kayit['id']}"):
+            depo().kuyruk_karari(kayit["ham"], "onayli", aday["hedef"], aday["tur"])
+            yenile()
+        if sutun[3].button("listede yok", key=f"ret-{kayit['id']}"):
+            depo().kuyruk_karari(kayit["ham"], "reddedildi")
+            yenile()
 
 
 # --------------------------------------------------------------------------
@@ -213,24 +265,36 @@ def yukleme_ekrani(veri: dict) -> None:
         st.sidebar.success(f"{len(kisiler)} personel satırı kaydedildi.")
         yenile()
 
-    sjr = st.sidebar.file_uploader("SCImago SJR (.csv)", type=["csv"], accept_multiple_files=True, key="sjr")
-    if sjr and st.sidebar.button("Çeyreklik listelerini kaydet"):
-        for dosya in sjr:
-            yil = next((int(p) for p in dosya.name.replace(".", " ").split() if p.isdigit()
-                        and len(p) == 4), None)
-            if not yil:
-                st.sidebar.warning(f"{dosya.name}: dosya adında yıl bulunamadı, atlandı.")
-                continue
-            depo().quartil_ekle(yil, sjr_ayristir(satirlari_oku(dosya, dosya.name)))
-            st.sidebar.success(f"{yil} çeyreklik listesi kaydedildi.")
+    jcr = st.sidebar.file_uploader("JCR çeyreklik dosyası (WoS)", type=["csv", "xls", "xlsx"],
+                                   accept_multiple_files=True, key="jcr")
+    if jcr and st.sidebar.button("JCR çeyrekliklerini kaydet"):
+        for dosya in jcr:
+            yil = _dosya_yili(dosya.name)
+            satirlar = jcr_ayristir(satirlari_oku(dosya, dosya.name), yil)
+            depo().dergi_metrik_ekle(satirlar)
+            st.sidebar.success(f"{dosya.name}: {len(satirlar)} dergi satırı (WoS).")
         yenile()
 
-    metrik = st.sidebar.file_uploader("OpenAlex yazar metrikleri (.json)", type=["json"],
-                                      accept_multiple_files=True, key="metrik")
-    if metrik and st.sidebar.button("Metrikleri kaydet"):
-        for dosya in metrik:
-            depo().metrik_ekle(openalex_ayristir(dosya.read().decode("utf-8")))
-        st.sidebar.success("Yazar metrikleri kaydedildi.")
+    kaynak_dosyasi = st.sidebar.file_uploader("Scopus Sources / CiteScore dosyası",
+                                              type=["csv", "xls", "xlsx"],
+                                              accept_multiple_files=True, key="scopus_kaynak")
+    if kaynak_dosyasi and st.sidebar.button("Scopus çeyrekliklerini kaydet"):
+        for dosya in kaynak_dosyasi:
+            satirlar = scopus_kaynak_ayristir(satirlari_oku(dosya, dosya.name),
+                                              _dosya_yili(dosya.name))
+            depo().dergi_metrik_ekle(satirlar)
+            st.sidebar.success(f"{dosya.name}: {len(satirlar)} dergi satırı (Scopus).")
+        yenile()
+
+    yazar = st.sidebar.file_uploader("Yazar h-indeksi dosyası", type=["csv", "xls", "xlsx"],
+                                     accept_multiple_files=True, key="yazar_metrik")
+    yazar_kaynagi = st.sidebar.radio("Yazar dosyasının kaynağı", ["WoS", "Scopus"],
+                                     horizontal=True, key="yazar_kaynagi")
+    if yazar and st.sidebar.button("Yazar metriklerini kaydet"):
+        for dosya in yazar:
+            satirlar = yazar_metrik_ayristir(satirlari_oku(dosya, dosya.name), yazar_kaynagi)
+            depo().kisi_metrik_ekle(satirlar)
+            st.sidebar.success(f"{dosya.name}: {len(satirlar)} yazar ({yazar_kaynagi}).")
         yenile()
 
     aylik = st.sidebar.file_uploader("Adjunct ay dosyası (.xlsx)", type=["xls", "xlsx"],
@@ -243,6 +307,28 @@ def yukleme_ekrani(veri: dict) -> None:
             for uyari in sonuc["uyarilar"]:
                 st.sidebar.warning(uyari)
         yenile()
+
+    st.sidebar.header("Otomatik toplama")
+    ayarlar = depo().ayarlar()
+    yol = st.sidebar.radio("Yol", ["api", "tarayici"],
+                           index=0 if ayarlar["toplama_yolu"] == "api" else 1, horizontal=True)
+    kurum = st.sidebar.text_input("Kurum sorgusu", ayarlar["kurum_sorgusu"])
+    af_id = st.sidebar.text_input("Scopus AF-ID", ayarlar["scopus_kurum_kimligi"])
+    if st.sidebar.button("Ayarları kaydet"):
+        depo().ayar_yaz({"toplama_yolu": yol, "kurum_sorgusu": kurum,
+                         "wos_kurum": kurum, "scopus_kurum_kimligi": af_id})
+        yenile()
+    if st.sidebar.button("Şimdi senkronize et"):
+        from yayin_paneli.toplayici import senkronize
+        for sonuc in senkronize(depo()):
+            if sonuc["durum"] == "tamam":
+                st.sidebar.success(f"{sonuc['kaynak']}: {sonuc['yeni']} yeni kayıt")
+            else:
+                st.sidebar.error(f"{sonuc['kaynak']}: {sonuc.get('mesaj')}")
+    for satir in depo().senk_gunlugu(3):
+        st.sidebar.caption(f"{satir['kaynak']} · {satir['durum']} · "
+                           f"{(satir['bitis'] or satir['baslangic'] or '')[:16]} · "
+                           f"{satir['mesaj'] or ''}")
 
     st.sidebar.header("Listeler")
     adjunct = st.sidebar.text_area(

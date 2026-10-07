@@ -1,10 +1,9 @@
-"""WoS, Scopus, personel, SCImago ve OpenAlex dosyalarını okuma."""
+"""WoS ve Scopus dosyalarını okuma: kayıtlar, dergi çeyreklikleri, yazar metrikleri."""
 
 from __future__ import annotations
 
 import csv
 import io
-import json
 import re
 from pathlib import Path
 
@@ -88,7 +87,7 @@ def indeksleri_coz(metin: str) -> list[str]:
 
 
 def issn_sade(deger) -> str:
-    """ISSN'i yalnızca rakam ve X'e indirger (SJR listesiyle aynı biçim)."""
+    """ISSN'i yalnızca rakam ve X'e indirger (metrik tablolarıyla aynı biçim)."""
     return re.sub(r"[^0-9X]", "", str(deger or "").upper())
 
 
@@ -276,39 +275,132 @@ def personel_ayristir(satirlar: list[list]) -> list[dict]:
     return kisiler
 
 
-def sjr_ayristir(satirlar: list[list]) -> dict[str, str]:
-    """SCImago CSV'sinden ISSN → çeyreklik haritası."""
-    basliklar = [_harf_sade(b) for b in (satirlar[0] if satirlar else [])]
-    issn_sutunu = next((i for i, b in enumerate(basliklar) if "issn" in b), None)
-    q_sutunu = next((i for i, b in enumerate(basliklar) if "quartile" in b), None)
-    if issn_sutunu is None or q_sutunu is None:
-        raise ValueError("Çeyreklik dosyasında ISSN ve Quartile sütunları bulunamadı.")
-    harita: dict[str, str] = {}
-    for satir in satirlar[1:]:
-        if not satir or q_sutunu >= len(satir):
-            continue
-        q = re.search(r"Q[1-4]", str(satir[q_sutunu] or "").upper())
-        if not q:
-            continue
-        for parca in re.split(r"[,;\s]+", str(satir[issn_sutunu] or "")):
-            issn = issn_sade(parca)
-            if len(issn) >= 8:
-                mevcut = harita.get(issn)
-                if not mevcut or q.group(0) < mevcut:
-                    harita[issn] = q.group(0)
-    return harita
+Q_KALIBI = re.compile(r"Q\s*([1-4])", re.I)
 
 
-def openalex_ayristir(metin: str) -> list[dict]:
-    """OpenAlex /authors çıktısından yazar başına atıf ve h indeksi."""
-    veri = json.loads(metin)
-    kayitlar = veri if isinstance(veri, list) else veri.get("results", [])
-    if not kayitlar:
-        raise ValueError("Dosyada yazar kaydı bulunamadı (results boş).")
-    return [{
-        "ad": temiz_ad(k.get("display_name", "")),
-        "kimlik": str(k.get("id", "")).replace("https://openalex.org/", ""),
-        "atif": int(k.get("cited_by_count") or 0),
-        "yayin": int(k.get("works_count") or 0),
-        "h": int((k.get("summary_stats") or {}).get("h_index") or 0),
-    } for k in kayitlar if temiz_ad(k.get("display_name", ""))]
+def q_coz(deger) -> str | None:
+    """"Q1", "Q 2", "1. çeyrek" gibi değerleri Q1..Q4'e indirger."""
+    metin = str(deger or "").strip()
+    eslesme = Q_KALIBI.search(metin)
+    if eslesme:
+        return f"Q{eslesme.group(1)}"
+    if re.fullmatch(r"[1-4]", metin):
+        return f"Q{metin}"
+    return None
+
+
+JCR_SUTUNLARI = {
+    "dergi": ["journal name", "journal title", "full journal title", "source title", "dergi"],
+    "issn": ["issn", "print issn"],
+    "eissn": ["eissn", "e-issn", "online issn"],
+    "kategori": ["category", "jcr category", "wos category", "category name"],
+    "q": ["jif quartile", "quartile", "jcr quartile", "category quartile"],
+    "deger": ["jif", "journal impact factor", "2023 jif", "impact factor"],
+    "yil": ["jcr year", "year", "jif year"],
+}
+
+SCOPUS_KAYNAK_SUTUNLARI = {
+    "dergi": ["source title", "title", "journal", "dergi"],
+    "issn": ["issn", "print issn"],
+    "eissn": ["eissn", "e-issn", "online issn"],
+    "kategori": ["asjc", "subject area", "scopus sub-subject area", "category"],
+    "q": ["quartile", "citescore quartile", "sjr quartile", "highest percentile"],
+    "deger": ["citescore", "sjr", "snip"],
+    "yil": ["year", "citescore year"],
+}
+
+
+def _metrik_satirlari(satirlar: list[list], sutunlar: dict, kaynak: str,
+                      varsayilan_yil: int | None = None) -> list[dict]:
+    """Dergi metrik dosyasını ortak `dergi_metrik` satırlarına çevirir."""
+    basliklar, veri = _baslik_bul(satirlar, sutunlar)
+    harita = _sutun_haritasi(basliklar, sutunlar)
+    if "q" not in harita and "deger" not in harita:
+        raise ValueError("Dosyada çeyreklik (quartile) ya da metrik sütunu bulunamadı.")
+
+    def al(satir, alan):
+        i = harita.get(alan)
+        return satir[i] if i is not None and i < len(satir) else None
+
+    cikti: list[dict] = []
+    for satir in veri:
+        if not satir or not any(satir):
+            continue
+        q = q_coz(al(satir, "q"))
+        yuzdelik = None
+        if q is None:
+            ham = str(al(satir, "q") or "")
+            sayi = re.search(r"(\d{1,3})(?:[.,]\d+)?\s*%?", ham)
+            if sayi and "percentile" in " ".join(str(b).lower() for b in basliklar):
+                yuzdelik = float(sayi.group(1))
+                q = ("Q1" if yuzdelik >= 75 else "Q2" if yuzdelik >= 50
+                     else "Q3" if yuzdelik >= 25 else "Q4")
+        if q is None:
+            continue
+        yil = sayiya_cevir(al(satir, "yil")) or varsayilan_yil or 0
+        dergi = temiz_ad(al(satir, "dergi") or "")
+        issnler = [issn_sade(al(satir, alan)) for alan in ("issn", "eissn")]
+        deger = sayiya_cevir(al(satir, "deger")) or yuzdelik
+        kategori = str(al(satir, "kategori") or "").strip()[:120]
+        for issn in {i for i in issnler if len(i) >= 8} or {""}:
+            cikti.append({"kaynak": kaynak, "yil": int(yil), "issn": issn, "dergi": dergi,
+                          "kategori": kategori, "q": q, "deger": deger})
+    if not cikti:
+        raise ValueError("Dosyadan çeyreklik satırı çıkarılamadı.")
+    return cikti
+
+
+def _baslik_bul(satirlar: list[list], sutunlar: dict) -> tuple[list, list[list]]:
+    """Başlık satırı dosyanın ilk satırı olmayabilir; ilk 15 satırda aranır."""
+    for i, satir in enumerate(satirlar[:15]):
+        harita = _sutun_haritasi(satir or [], sutunlar)
+        if len(harita) >= 2:
+            return satir, satirlar[i + 1:]
+    return (satirlar[0] if satirlar else []), satirlar[1:]
+
+
+def jcr_ayristir(satirlar: list[list], yil: int | None = None) -> list[dict]:
+    """JCR (Journal Citation Reports) dışa aktarımından WoS çeyreklikleri."""
+    return _metrik_satirlari(satirlar, JCR_SUTUNLARI, "WoS", yil)
+
+
+def scopus_kaynak_ayristir(satirlar: list[list], yil: int | None = None) -> list[dict]:
+    """Scopus Sources / CiteScore dışa aktarımından Scopus çeyreklikleri."""
+    return _metrik_satirlari(satirlar, SCOPUS_KAYNAK_SUTUNLARI, "Scopus", yil)
+
+
+YAZAR_SUTUNLARI = {
+    "ad": ["author name", "name", "full name", "author", "yazar"],
+    "profil_kimlik": ["author id", "scopus author id", "researcher id", "orcid", "id"],
+    "h": ["h-index", "h index", "hindex"],
+    "atif": ["citations", "cited by", "times cited", "total citations"],
+    "yayin": ["documents", "publications", "web of science documents", "document count"],
+}
+
+
+def yazar_metrik_ayristir(satirlar: list[list], kaynak: str) -> list[dict]:
+    """WoS Researcher / Scopus Author dışa aktarımından kişi başına h ve atıf."""
+    basliklar, veri = _baslik_bul(satirlar, YAZAR_SUTUNLARI)
+    harita = _sutun_haritasi(basliklar, YAZAR_SUTUNLARI)
+    if "ad" not in harita or "h" not in harita:
+        raise ValueError("Dosyada yazar adı ve h-index sütunları bulunamadı.")
+
+    def al(satir, alan):
+        i = harita.get(alan)
+        return satir[i] if i is not None and i < len(satir) else None
+
+    cikti = []
+    for satir in veri:
+        ad = temiz_ad(al(satir, "ad") or "")
+        if not ad:
+            continue
+        cikti.append({
+            "kaynak": kaynak, "ad": ad,
+            "profil_kimlik": str(al(satir, "profil_kimlik") or ad).strip(),
+            "h": int(sayiya_cevir(al(satir, "h")) or 0),
+            "atif": int(sayiya_cevir(al(satir, "atif")) or 0),
+            "yayin": int(sayiya_cevir(al(satir, "yayin")) or 0),
+        })
+    if not cikti:
+        raise ValueError("Dosyadan yazar metriği çıkarılamadı.")
+    return cikti
