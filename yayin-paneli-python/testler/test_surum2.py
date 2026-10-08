@@ -372,10 +372,22 @@ def test_baglanti_yillari_her_zaman_2022den_baslar(tmp_path):
     assert yillar[0] == 2022 and len(yillar) >= 6
 
 
-def test_dis_surec_yalitik_mod_kullanmaz():
-    """"-I" kullanıcı site-packages'ını kapatır; pip install --user ile kurulan
-    Playwright o modda görünmez, bu yüzden kullanılmamalı."""
+def test_dis_surec_yalitik_mod_kullanmaz(monkeypatch, tmp_path):
+    """"-I" kullanıcı site-packages'ını kapatır; "pip install --user" ile kurulan
+    Playwright o modda görünmez, bu yüzden betik yalıtık modda çalıştırılmamalı."""
+    import subprocess
+
     from yayin_paneli.toplayici import dis_surec
-    kaynak = Path(dis_surec.__file__).read_text(encoding="utf-8")
-    calistirma = kaynak[kaynak.index("def calistir("):]
-    assert '"-I"' not in calistirma
+
+    cagrilar = []
+
+    def sahte_run(argv, **kwargs):
+        cagrilar.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout='{"durum": "tamam"}', stderr="")
+
+    monkeypatch.setattr(dis_surec, "playwrightli_python", lambda **k: "/usr/bin/python3")
+    monkeypatch.setattr(dis_surec.subprocess, "run", sahte_run)
+    sonuc = dis_surec.calistir("cek", "https://ornek", tmp_path / "p", tmp_path / "i")
+    assert sonuc["durum"] == "tamam"
+    (argv,) = cagrilar
+    assert "-I" not in argv and "-s" not in argv and "-E" not in argv
