@@ -99,7 +99,7 @@ async function durumuYenile() {
   const d = DURUM.durum;
   $("#altbilgi").textContent = d
     ? `${Grafik.sayiBicim(d.kayit)} kayıt · ${d.personel} personel · ${d.adjunct} adjunct · ` +
-      `kaynaklar: ${d.kaynaklar.join(", ") || "yok"}`
+      `kaynaklar: ${d.kaynaklar.join(", ") || "yok"} · sürüm ${d.surum || "?"}`
     : "sunucuya ulaşılamadı";
   $("#altbilgi").title = d?.veritabani ? `Veritabanı: ${d.veritabani}` : "";
   $("#kapat-dugmesi").classList.toggle("gizli", !d?.paket);
@@ -811,6 +811,11 @@ async function basla() {
   }, 10 * 1000);
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
+    // Yeni sürüm devralınca sayfayı bir kez tazele: eski arayüz ekranda kalmasın.
+    let tazelendi = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!tazelendi) { tazelendi = true; location.reload(); }
+    });
   }
 }
 

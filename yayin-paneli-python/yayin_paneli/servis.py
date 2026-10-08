@@ -32,7 +32,8 @@ WEB = Path(os.environ.get("YAYIN_PANELI_WEB")
            or Path(__file__).resolve().parent.parent / "web")
 PAKET = os.environ.get("YAYIN_PANELI_PAKET") == "1"
 
-uygulama = FastAPI(title="Doğuş Üniversitesi Yayın Paneli", version="2.0")
+SURUM = "2.1"
+uygulama = FastAPI(title="Doğuş Üniversitesi Yayın Paneli", version=SURUM)
 depo = Depo()
 zamanlayici = Zamanlayici(depo)
 izleyici = Izleyici(depo, Path(depo.ayarlar().get("indirilenler") or varsayilan_klasor()))
@@ -64,6 +65,7 @@ def durum() -> dict:
     gunluk = depo.senk_gunlugu(10)
     son = gunluk[0] if gunluk else None
     return {
+        "surum": SURUM,
         "veritabani": str(depo.yol.resolve()),
         "kayit": len(veri["kurum_kayitlari"]),
         "personel": len(veri["personel"]),

@@ -1,7 +1,13 @@
-/* Hizmet işçisi: uygulama kabuğu önbellekten, veri her zaman ağdan.
-   Ağ yoksa son başarılı API yanıtı gösterilir ki panel çevrimdışı da açılsın. */
-const KABUK = "yayin-paneli-kabuk-v2";
-const VERI = "yayin-paneli-veri-v2";
+/* Hizmet işçisi.
+   Kabuk dosyaları (HTML/JS/CSS) önce ağdan alınır, ağ yoksa önbellekten: yeni sürüm
+   kurulduğunda arayüz kendiliğinden tazelenir. Eskiden kabuk "önce önbellek" ile
+   sunuluyordu ve uygulama güncellense bile tarayıcı eski arayüzü çalıştırıyordu.
+   API yanıtları da önce ağdan, çevrimdışıyken son başarılı yanıttan gelir.
+
+   SURUM değiştiğinde eski önbellekler silinir; arayüz dosyaları değişince artırın. */
+const SURUM = "v3";
+const KABUK = `yayin-paneli-kabuk-${SURUM}`;
+const VERI = `yayin-paneli-veri-${SURUM}`;
 const DOSYALAR = ["./", "./index.html", "./stil.css", "./grafik.js", "./uygulama.js",
                   "./simge.svg", "./manifest.webmanifest"];
 
@@ -40,5 +46,18 @@ self.addEventListener("fetch", (olay) => {
     return;
   }
 
-  olay.respondWith(caches.match(istek).then((eski) => eski || fetch(istek)));
+  // Kabuk: önce ağ, olmazsa önbellek (bayat arayüz sorununu önler).
+  olay.respondWith((async () => {
+    try {
+      const yanit = await fetch(istek);
+      if (yanit.ok) {
+        const kopya = yanit.clone();
+        olay.waitUntil(caches.open(KABUK).then((k) => k.put(istek, kopya)));
+      }
+      return yanit;
+    } catch (hata) {
+      const eski = await caches.match(istek, { cacheName: KABUK });
+      return eski || Response.error();
+    }
+  })());
 });
