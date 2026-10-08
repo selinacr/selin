@@ -203,6 +203,18 @@ class Izleyici:
 # --- hazır arama bağlantıları ---------------------------------------------
 # Çeyreklik ve h-indeksi kayıt dışa aktarımlarında yer almaz; bunlar ayrı
 # listelerden gelir. Hepsi kütüphane girişiyle açılır ve dosya olarak indirilir.
+# Giriş gerektirmeyen, panelin kendi indirebileceği listeler.
+ACIK_KAYNAKLAR = [
+    {
+        "kod": "scopus_kaynak_listesi",
+        "ad": "Scopus dergi listesi (CiteScore + yüzdelik + SJR)",
+        "adres": "https://www.elsevier.com/products/scopus/content",
+        "aciklama": "Scopus'un kendi yayımladığı dergi listesi. Giriş gerektirmez; "
+                    "panel doğrudan indirmeyi dener. Adres değişirse aşağıdan "
+                    "güncelleyebilirsiniz.",
+    },
+]
+
 METRIK_KAYNAKLARI = [
     {
         "ad": "JCR — WoS çeyreklikleri",
@@ -233,6 +245,51 @@ METRIK_KAYNAKLARI = [
         "tur": "yazar",
     },
 ]
+
+
+def adresten_indir(adres: str, klasor: Path, ad: str | None = None) -> Path:
+    """Verilen adresteki dosyayı izlenen klasöre indirir.
+
+    Giriş gerektiren bir adres verilirse sunucu HTML giriş sayfası döndürür; bu durumda
+    dosya tanınmaz ve kullanıcıya açık hata gösterilir.
+    """
+    import urllib.error
+    import urllib.request
+
+    klasor = Path(klasor)
+    klasor.mkdir(parents=True, exist_ok=True)
+    istek = urllib.request.Request(adres, headers={
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36",
+    })
+    try:
+        with urllib.request.urlopen(istek, timeout=120) as yanit:
+            icerik_turu = yanit.headers.get("Content-Type", "")
+            if "text/html" in icerik_turu:
+                raise RuntimeError(
+                    "Adres dosya değil web sayfası döndürdü. Muhtemelen giriş gerekiyor "
+                    "ya da indirme bağlantısı sayfanın içinde. Sayfayı tarayıcınızda "
+                    "açıp dosyayı elle indirin; panel İndirilenler klasöründen alır.")
+            dosya_adi = ad or _indirme_adi(yanit, adres)
+            hedef = klasor / dosya_adi
+            hedef.write_bytes(yanit.read())
+    except urllib.error.HTTPError as hata:
+        raise RuntimeError(f"Sunucu {hata.code} döndürdü: {hata.reason}") from hata
+    except urllib.error.URLError as hata:
+        raise RuntimeError(f"Adrese ulaşılamadı: {hata.reason}") from hata
+    return hedef
+
+
+def _indirme_adi(yanit, adres: str) -> str:
+    import re as _re
+    import urllib.parse
+    tanim = yanit.headers.get("Content-Disposition", "")
+    eslesme = _re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)', tanim)
+    if eslesme:
+        return urllib.parse.unquote(eslesme.group(1)).strip()
+    yol = urllib.parse.urlparse(adres).path
+    ad = Path(yol).name or "indirilen"
+    return ad if Path(ad).suffix.lower() in UZANTILAR else ad + ".xlsx"
 
 
 def yazar_profili_baglantilari(ad: str) -> dict[str, str]:

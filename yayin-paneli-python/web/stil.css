@@ -218,7 +218,7 @@ td.sayi, th.sayi { text-align: right; }
   border-bottom: 1px solid var(--cizgi);
 }
 .onay-satir .ham { font-weight: 600; }
-.onay-satir .meta { color: var(--ink-muted); font-size: 12px; }
+.onay-satir .meta, td .meta { color: var(--ink-muted); font-size: 12px; margin-top: 3px; }
 
 /* --- kişi analizi ------------------------------------------------- */
 .kisi-liste { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }

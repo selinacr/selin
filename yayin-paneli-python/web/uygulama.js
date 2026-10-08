@@ -419,51 +419,85 @@ function veriCekEkrani() {
   const bag = DURUM.baglantilar;
   if (!bag) {
     getir("/api/baglantilar").then((v) => { DURUM.baglantilar = v; ciz(); }).catch(() => {});
-    return `<div class="bos">Bağlantılar hazırlanıyor…</div>`;
+    return `<div class="bos">Hazırlanıyor…</div>`;
   }
 
+  const sonYil = bag.yillar.length ? bag.yillar[bag.yillar.length - 1].yil : "";
+  const otomatik = bag.tarayici_oturumu;
+
+  /* 1 — tek düğmeyle çekme (tarayıcı otomasyonu) */
+  const bolum1 = kart("1 · Tek düğmeyle çek",
+    otomatik
+      ? "Tarayıcı oturumun kayıtlı. Düğmeye bastığında panel aramayı açar, Export'a " +
+        "basar, dosyayı indirir ve analizi günceller."
+      : "Bunu ilk kez kullanıyorsun. Önce bir kez kütüphane girişini yap: açılan " +
+        "pencerede e-postan ve şifrenle gir, sonra pencereyi kapat. Giriş bilgin " +
+        "panele girilmez, panelde saklanmaz — yalnızca tarayıcı oturumu kalır.",
+    `<div class="filtreler" style="padding:0">
+      <label>Yıl <select id="cek-yili">${bag.yillar.map((y) => (
+        `<option value="${y.yil}"${y.yil === sonYil ? " selected" : ""}>${y.yil}</option>`
+      )).join("")}</select></label>
+      ${otomatik ? `
+        <button class="dugme vurgulu" data-cek="WoS">WoS'tan çek ve analiz et</button>
+        <button class="dugme vurgulu" data-cek="Scopus">Scopus'tan çek ve analiz et</button>
+        <button class="dugme" data-giris="WoS">Oturumu yenile</button>`
+      : `
+        <button class="dugme vurgulu" data-giris="WoS">1. WoS'a bir kez giriş yap</button>
+        <button class="dugme vurgulu" data-giris="Scopus">2. Scopus'a bir kez giriş yap</button>`}
+    </div>
+    <p class="notu" id="cek-durumu"></p>`,
+    "Bu yol tarayıcı otomasyonu kullanır; WoS/Scopus arayüzü değişirse düğme hata " +
+    "verebilir. O durumda aşağıdaki 2. yol her zaman çalışır.");
+
+  /* 2 — elle: panel sayfayı açar, kullanıcı Export'a basar */
   const satirlar = bag.yillar.map((y) => `
     <tr>
       <td>${y.yil}</td>
-      <td><a class="dugme" href="${y.wos}" target="_blank" rel="noopener">WoS'ta aç</a></td>
-      <td><a class="dugme" href="${y.scopus}" target="_blank" rel="noopener">Scopus'ta aç</a></td>
+      <td><a class="dugme" href="${y.wos}" target="_blank" rel="noopener">WoS'ta aç → Export'a bas</a></td>
+      <td><a class="dugme" href="${y.scopus}" target="_blank" rel="noopener">Scopus'ta aç → Export'a bas</a></td>
     </tr>`).join("");
 
+  const bolum2 = kart("2 · Sayfayı aç, Export'a bas (her zaman çalışır)",
+    "Düğme doğru aramayı senin tarayıcında açar. Sayfadaki Export düğmesine basman " +
+    "yeterli; inen dosyayı panel kendiliğinden alır ve analizi günceller.",
+    `<div class="tablo-sarmal"><table>
+       <thead><tr><th>Yıl</th><th>Web of Science</th><th>Scopus</th></tr></thead>
+       <tbody>${satirlar}</tbody></table></div>`,
+    "WoS: Export → Excel → Full Record, belge türü filtresi koymayın. " +
+    "Scopus: Export → CSV → «Bibliographical information» kutusunu da işaretleyin.");
+
+  /* 3 — Q değerleri ve h-indeksi listeleri */
+  const acik = (bag.acik_kaynaklar || []).map((k) => `
+    <tr>
+      <td><b>${kacis(k.ad)}</b><div class="meta">${kacis(k.aciklama)}</div></td>
+      <td><button class="dugme vurgulu" data-indir="${kacis(k.adres)}">Panel indirsin</button>
+          <a class="dugme" href="${k.adres}" target="_blank" rel="noopener">Sayfayı aç</a></td>
+    </tr>`).join("");
+
+  const metrikler = (bag.metrikler || []).map((k) => `
+    <tr>
+      <td><b>${kacis(k.ad)}</b><div class="meta">${kacis(k.nasil)}</div></td>
+      <td><a class="dugme" href="${k.adres}" target="_blank" rel="noopener">Aç</a></td>
+    </tr>`).join("");
+
+  const bolum3 = kart("3 · Çeyreklik (Q) ve h-indeksi listeleri",
+    "Yayın dışa aktarımlarında Q ve h bulunmaz — bunlar ayrı listelerdir ve " +
+    "yüklenmeden Q1 sayısı sıfır görünür. Yılda bir indirmen yeterli.",
+    `<div class="tablo-sarmal"><table>
+       <thead><tr><th>Kaynak</th><th>İşlem</th></tr></thead>
+       <tbody>${acik}${metrikler}</tbody></table></div>
+     <p class="notu" id="indir-durumu"></p>`,
+    "Kişi bazlı tablodaki «h (…, veri seti)» kolonları bu listeler olmadan da doludur: " +
+    "panelde yüklü yayınların atıf sayılarından hesaplanır. Kariyer boyu h-indeksi " +
+    "için yazar listelerini indirin.");
+
+  /* 4 — izlenen klasör */
   const gecmis = (iz?.gecmis || []).map((g) => `
     <tr><td>${kacis(g.dosya)}</td><td>${kacis(g.tur || "—")}</td>
         <td class="sayi">${g.adet ?? "·"}</td>
         <td>${kacis(g.durum)}${g.mesaj ? " — " + kacis(g.mesaj) : ""}</td></tr>`).join("");
 
-  const metrikler = (bag.metrikler || []).map((k) => `
-    <tr>
-      <td><a class="dugme" href="${k.adres}" target="_blank" rel="noopener">${kacis(k.ad)}</a></td>
-      <td>${kacis(k.nasil)}</td>
-    </tr>`).join("");
-
-  return kart("Veriyi kendi oturumunla çek",
-    "Kütüphane girişin kendi tarayıcında açık. Aşağıdaki düğme doğru aramayı senin " +
-    "tarayıcında açar; sen yalnızca sayfadaki Export düğmesine basarsın. İnen dosya " +
-    "İndirilenler klasörüne düştüğü anda panel onu tanıyıp içeri alır — dosya seçmen, " +
-    "yüklemen gerekmez.",
-    `<div class="tablo-sarmal"><table>
-       <thead><tr><th>Yıl</th><th>Web of Science</th><th>Scopus</th></tr></thead>
-       <tbody>${satirlar}</tbody></table></div>`,
-    "WoS'ta Export → Excel → Record Content: Full Record seçin ve belge türü filtresi " +
-    "koymayın. Scopus'ta Export → CSV seçtikten sonra «Bibliographical information» " +
-    "kutusunu da işaretleyin; aksi hâlde ISSN ve adres sütunları gelmez.") +
-
-  kart("Çeyreklik ve h-indeksi listeleri",
-    "Yayın dışa aktarımlarında çeyreklik ve h-indeksi bulunmaz; bunlar ayrı listelerden " +
-    "gelir. Aşağıdaki sayfaları kendi oturumunla aç, listeyi indir — panel dosyayı yine " +
-    "kendiliğinden tanır. Bu listeler yılda bir güncellenir, her seferinde indirmen gerekmez.",
-    `<div class="tablo-sarmal"><table>
-       <thead><tr><th>Kaynak</th><th>Nasıl indirilir</th></tr></thead>
-       <tbody>${metrikler}</tbody></table></div>`,
-    "Bu listeler gelmeden önce bile kişi bazlı tabloda «h (…, veri seti)» kolonları " +
-    "doludur: panelde yüklü yayınların atıf sayılarından hesaplanır. Profil h-indeksi " +
-    "(kariyer boyu) yalnızca yukarıdaki yazar listeleri yüklenince görünür.") +
-
-  kart("İzlenen klasör",
+  const bolum4 = kart("4 · İzlenen klasör",
     iz?.calisiyor ? "Panel bu klasörü izliyor; yeni inen dosya kendiliğinden alınır."
                   : "İzleme kapalı. Açarsanız inen dosyalar kendiliğinden alınır.",
     `<div class="filtreler" style="padding:0">
@@ -473,13 +507,12 @@ function veriCekEkrani() {
         iz?.calisiyor ? "İzlemeyi durdur" : "İzlemeyi başlat"}</button>
       <button class="dugme" id="simdi-tara">Şimdi tara</button>
     </div>` +
-    (iz?.var ? "" : `<p class="notu">Bu klasör bulunamadı; doğru yolu yazıp kaydedin.</p>`)) +
-
-  kart("Son alınan dosyalar", "",
-    gecmis ? `<div class="tablo-sarmal"><table>
+    (gecmis ? `<div class="tablo-sarmal" style="margin-top:12px"><table>
         <thead><tr><th>Dosya</th><th>Tür</th><th class="sayi">Kayıt</th><th>Durum</th></tr></thead>
         <tbody>${gecmis}</tbody></table></div>`
-      : `<div class="bos">Henüz dosya alınmadı.</div>`);
+      : `<p class="notu">Henüz dosya alınmadı.</p>`));
+
+  return bolum1 + bolum2 + bolum3 + bolum4;
 }
 
 /* --- senkron ---------------------------------------------------------- */
@@ -639,6 +672,64 @@ function olaylariBagla() {
       olay.target.disabled = true;
       await getir("/api/onay/tazele", { method: "POST" });
       await kuyrukYenile(); await durumuYenile(); ciz();
+      return;
+    }
+
+    const cekDugmesi = olay.target.closest("button[data-cek]");
+    if (cekDugmesi) {
+      const kaynak = cekDugmesi.dataset.cek;
+      const yil = Number(govde().querySelector("#cek-yili")?.value) || undefined;
+      const durum = govde().querySelector("#cek-durumu");
+      cekDugmesi.disabled = true;
+      durum.textContent = `${kaynak} açılıyor, dışa aktarma bekleniyor… (bir dakika sürebilir)`;
+      try {
+        const sonuc = await getir("/api/otomatik/cek", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kaynak, yil }),
+        });
+        durum.textContent = sonuc.mesaj || sonuc.durum;
+        if (sonuc.durum === "tamam") { await durumuYenile(); await veriYenile(); return; }
+      } catch (hata) {
+        durum.textContent = hata.message;
+      }
+      cekDugmesi.disabled = false;
+      return;
+    }
+
+    const girisDugmesi = olay.target.closest("button[data-giris]");
+    if (girisDugmesi) {
+      const durum = govde().querySelector("#cek-durumu");
+      durum.textContent = "Tarayıcı penceresi açılıyor. Girişi yapıp pencereyi kapatın…";
+      try {
+        const sonuc = await getir("/api/otomatik/giris", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kaynak: girisDugmesi.dataset.giris }),
+        });
+        durum.textContent = sonuc.mesaj || sonuc.durum;
+      } catch (hata) {
+        durum.textContent = hata.message;
+      }
+      DURUM.baglantilar = null;
+      await durumuYenile(); ciz();
+      return;
+    }
+
+    const indirDugmesi = olay.target.closest("button[data-indir]");
+    if (indirDugmesi) {
+      const durum = govde().querySelector("#indir-durumu");
+      indirDugmesi.disabled = true;
+      durum.textContent = "İndiriliyor…";
+      try {
+        const sonuc = await getir("/api/indir", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ adres: indirDugmesi.dataset.indir }),
+        });
+        durum.textContent = `${sonuc.dosya} indirildi.`;
+        await durumuYenile(); await veriYenile(); return;
+      } catch (hata) {
+        durum.textContent = hata.message.replace(/^\d+:\s*/, "").replace(/^\{"detail":"|"\}$/g, "");
+      }
+      indirDugmesi.disabled = false;
       return;
     }
 

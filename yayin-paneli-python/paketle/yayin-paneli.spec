@@ -31,6 +31,8 @@ analiz = Analysis(
     # Paketi şişiren, panelde kullanılmayan bağımlılıklar:
     # cryptography paneldeki hiçbir yol tarafından kullanılmaz (HTTPS için stdlib ssl
     # yeterli) ve bazı ortamlarda paketleme sırasında çöküyor.
+    # playwright paket icine girmez (Chromium ~150 MB); kullanici kurarsa panel bulur:
+    #   python3 -m pip install playwright && python3 -m playwright install chromium
     excludes=["streamlit", "matplotlib", "tkinter", "PIL", "pytest", "playwright",
               "IPython", "notebook", "cryptography",
               # pyarrow yalnızca Streamlit sürümü için gerekli, servis tarafı kullanmıyor

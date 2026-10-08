@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import signal
 import threading
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -22,8 +23,8 @@ from pydantic import BaseModel
 from .analiz import Panel
 from .depo import Depo
 from .eslesme import kuyrugu_tazele
-from .izleyici import (METRIK_KAYNAKLARI, Izleyici, arama_baglantilari,
-                       varsayilan_klasor, yazar_profili_baglantilari)
+from .izleyici import (ACIK_KAYNAKLAR, METRIK_KAYNAKLARI, Izleyici, adresten_indir,
+                       arama_baglantilari, varsayilan_klasor, yazar_profili_baglantilari)
 from .toplayici.zamanlayici import Zamanlayici
 
 # Paketlenmiş uygulamada web dosyaları gömülü klasörden gelir.
@@ -199,9 +200,58 @@ def baglantilar() -> dict:
     ilk = int(ayarlar.get("ilk_yil") or 2022)
     from datetime import datetime
     yillar = list(range(ilk, datetime.now().year + 2))
+    from .toplayici.otomatik import giris_var_mi
     return {"yillar": arama_baglantilari(ayarlar, yillar),
             "metrikler": METRIK_KAYNAKLARI,
+            "acik_kaynaklar": ACIK_KAYNAKLAR,
+            "tarayici_oturumu": giris_var_mi(),
             "klasor": str(izleyici.klasor)}
+
+
+class IndirmeIstegi(BaseModel):
+    adres: str
+    ad: str | None = None
+
+
+@uygulama.post("/api/indir")
+def indir(istek: IndirmeIstegi) -> dict:
+    """Giriş gerektirmeyen bir adresi doğrudan izlenen klasöre indirir."""
+    try:
+        hedef = adresten_indir(istek.adres, izleyici.klasor, istek.ad)
+    except RuntimeError as hata:
+        raise HTTPException(400, str(hata)) from hata
+    alinan = izleyici.bir_tarama()
+    return {"dosya": hedef.name, "alinan": alinan}
+
+
+class OtomatikIstek(BaseModel):
+    kaynak: str = "WoS"            # "WoS" | "Scopus"
+    yil: int | None = None
+    gorunur: bool = False
+
+
+@uygulama.post("/api/otomatik/giris")
+def otomatik_giris(istek: OtomatikIstek) -> dict:
+    """Bir kez giriş: görünür tarayıcı açılır, kullanıcı girer, oturum saklanır."""
+    from .toplayici.otomatik import giris_penceresi
+    adres = ("https://www.webofscience.com" if istek.kaynak == "WoS"
+             else "https://www.scopus.com")
+    sonuc = giris_penceresi(adres)
+    return {"durum": sonuc.durum, "mesaj": sonuc.mesaj}
+
+
+@uygulama.post("/api/otomatik/cek")
+def otomatik_cek(istek: OtomatikIstek) -> dict:
+    """Kayıtlı oturumla aramayı açar, Export'a basar, dosyayı indirir ve içeri alır."""
+    from .toplayici.otomatik import cek
+    ayarlar = depo.ayarlar()
+    yil = istek.yil or datetime.now().year
+    (satir,) = arama_baglantilari(ayarlar, [yil])
+    adres = satir["wos"] if istek.kaynak == "WoS" else satir["scopus"]
+    sonuc = cek(istek.kaynak, adres, izleyici.klasor, istek.gorunur)
+    alinan = izleyici.bir_tarama() if sonuc.durum == "tamam" else []
+    return {"durum": sonuc.durum, "mesaj": sonuc.mesaj, "dosya": sonuc.dosya,
+            "alinan": alinan}
 
 
 class IzleyiciAyari(BaseModel):

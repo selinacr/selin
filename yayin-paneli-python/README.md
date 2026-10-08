@@ -93,7 +93,31 @@ python araclar/veri_yukle.py --senk        # WoS + Scopus senkronunu hemen çal�
 python araclar/veri_yukle.py --kuyruk      # onay kuyruğunu yeniden hesapla
 ```
 
-## Veri çekmenin en kolay yolu: **Veri çek** sekmesi
+## Veri çek sekmesi — dört bölüm
+
+**1 · Tek düğmeyle çek.** Panel senin tarayıcı oturumunla aramayı açar, Export'a basar,
+dosyayı indirir ve analizi günceller. İlk kullanımda bir kez kütüphane girişi yapılır
+(açılan pencerede, panele değil); oturum kalıcı profilde saklanır. Bu yol için Playwright
+gerekir:
+
+```
+python3 -m pip install playwright
+python3 -m playwright install chromium
+```
+
+Paketlenmiş uygulamada Playwright gömülü değildir (Chromium ~150 MB); kurulu değilse
+düğme açık hata verir ve 2. yol kullanılır. WoS/Scopus arayüzü değişirse bu yol
+bozulabilir — o yüzden 2. yol her zaman duruyor.
+
+**2 · Sayfayı aç, Export'a bas.** Her koşulda çalışan yol; aşağıda anlatılıyor.
+
+**3 · Çeyreklik ve h-indeksi listeleri.** Q ve h yayın dışa aktarımlarında yoktur.
+Giriş gerektirmeyen listeler için «Panel indirsin» düğmesi dosyayı doğrudan indirir;
+giriş gerekenler için sayfa açılır.
+
+**4 · İzlenen klasör.** İndirilenler klasörü ve son alınan dosyalar.
+
+## 2. yolun ayrıntısı
 
 Kütüphane girişin kendi tarayıcında açık olduğu için panel senin yerine giriş yapmaz;
 bunun yerine işi tek tıka indirir:
