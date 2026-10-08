@@ -142,7 +142,7 @@ def test_q_kaynak_bazinda_ayri_tutulur():
     assert zengin["q"] == "Q1" and zengin["q_kaynagi"] == "WoS"
 
     panel.kaynak_secimi = "Scopus"
-    panel._q_bellek = None
+    panel.bellegi_temizle()
     (zengin,), _ = panel.zenginlestir()
     assert zengin["q"] == "Q2" and zengin["q_kaynagi"] == "Scopus"
 

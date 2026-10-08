@@ -196,14 +196,17 @@ def ayar_guncelle(guncelleme: AyarGuncelleme) -> dict:
 
 
 @uygulama.get("/api/baglantilar")
-def baglantilar() -> dict:
+def baglantilar(denetle: bool = False) -> dict:
     """Kullanıcının kendi tarayıcısında açacağı hazır WoS/Scopus aramaları."""
     ayarlar = depo.ayarlar()
-    ilk = int(ayarlar.get("ilk_yil") or 2022)
-    from datetime import datetime
+    # Bağlantı listesi her zaman 2022'den bu yılın bir fazlasına kadar uzanır; ayarlardaki
+    # "ilk yıl" yalnızca API senkronunu daraltır, bu listeyi daraltmaz.
+    ilk = min(int(ayarlar.get("ilk_yil") or 2022), 2022)
     yillar = list(range(ilk, datetime.now().year + 2))
+    from .toplayici.dis_surec import playwrightli_python
     from .toplayici.otomatik import giris_var_mi
     return {"yillar": arama_baglantilari(ayarlar, yillar),
+            "playwright": bool(playwrightli_python(yeniden=denetle)),
             "metrikler": METRIK_KAYNAKLARI,
             "acik_kaynaklar": ACIK_KAYNAKLAR,
             "tarayici_oturumu": giris_var_mi(),
@@ -235,25 +238,25 @@ class OtomatikIstek(BaseModel):
 @uygulama.post("/api/otomatik/giris")
 def otomatik_giris(istek: OtomatikIstek) -> dict:
     """Bir kez giriş: görünür tarayıcı açılır, kullanıcı girer, oturum saklanır."""
-    from .toplayici.otomatik import giris_penceresi
+    from .toplayici.dis_surec import calistir
+    from .toplayici.tarayici import PROFIL_YOLU
     adres = ("https://www.webofscience.com" if istek.kaynak == "WoS"
              else "https://www.scopus.com")
-    sonuc = giris_penceresi(adres)
-    return {"durum": sonuc.durum, "mesaj": sonuc.mesaj}
+    return calistir("giris", adres, PROFIL_YOLU, izleyici.klasor, gorunur=True)
 
 
 @uygulama.post("/api/otomatik/cek")
 def otomatik_cek(istek: OtomatikIstek) -> dict:
     """Kayıtlı oturumla aramayı açar, Export'a basar, dosyayı indirir ve içeri alır."""
-    from .toplayici.otomatik import cek
+    from .toplayici.dis_surec import calistir
+    from .toplayici.tarayici import PROFIL_YOLU
     ayarlar = depo.ayarlar()
     yil = istek.yil or datetime.now().year
     (satir,) = arama_baglantilari(ayarlar, [yil])
     adres = satir["wos"] if istek.kaynak == "WoS" else satir["scopus"]
-    sonuc = cek(istek.kaynak, adres, izleyici.klasor, istek.gorunur)
-    alinan = izleyici.bir_tarama() if sonuc.durum == "tamam" else []
-    return {"durum": sonuc.durum, "mesaj": sonuc.mesaj, "dosya": sonuc.dosya,
-            "alinan": alinan}
+    sonuc = calistir("cek", adres, PROFIL_YOLU, izleyici.klasor, istek.gorunur)
+    sonuc["alinan"] = izleyici.bir_tarama() if sonuc.get("durum") == "tamam" else []
+    return sonuc
 
 
 class IzleyiciAyari(BaseModel):

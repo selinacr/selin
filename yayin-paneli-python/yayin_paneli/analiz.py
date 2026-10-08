@@ -247,7 +247,28 @@ class Panel:
 
     # --- çekirdek ----------------------------------------------------
     def zenginlestir(self) -> tuple[list[dict], int]:
-        """Kayıtları tekilleştirir, kişi eşleşmesi ve çeyreklik ekler."""
+        """Kayıtları tekilleştirir, kişi eşleşmesi ve çeyreklik ekler.
+
+        Her tablo bu işi yeniden yaptırmasın diye sonuç bellekte tutulur; sonuç yalnızca
+        kaynak seçimi ve bildiri tercihine bağlıdır.
+        """
+        # Veri listeleri sonradan değişirse (yeni dosya alındığında) bellek düşsün.
+        bellek_anahtari = (self.kaynak_secimi, self.bildiri_dahil, len(self.kayitlar),
+                           len(self.dergi_metrikleri), len(self.kisi_metrikleri),
+                           len(self.takma_adlar))
+        onbellek = getattr(self, "_zengin_bellek", None)
+        if onbellek and onbellek[0] == bellek_anahtari:
+            return onbellek[1], onbellek[2]
+        zengin, bildiri = self._zenginlestir()
+        self._zengin_bellek = (bellek_anahtari, zengin, bildiri)
+        return zengin, bildiri
+
+    def bellegi_temizle(self) -> None:
+        """Çözümleme bellekleri sıfırlanır; veri yerinde değiştirildiğinde çağrılır."""
+        self._zengin_bellek = None
+        self._q_bellek = None
+
+    def _zenginlestir(self) -> tuple[list[dict], int]:
         kisiler = personel_dizini(self.personel)
         adjunctlar = [a for a in (adjunct_satiri_coz(s) for s in self.adjunct) if a]
         dizin = AdayDizini(kisiler)

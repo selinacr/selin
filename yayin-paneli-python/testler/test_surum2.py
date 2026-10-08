@@ -351,3 +351,22 @@ def test_metrik_kaynak_baglantilari():
     assert all(k["adres"].startswith("https://") for k in METRIK_KAYNAKLARI)
     profil = yazar_profili_baglantilari("Şahram Minayi")
     assert "webofscience.com" in profil["wos"] and "scopus.com" in profil["scopus"]
+
+
+# --- tarayıcı otomasyonu dış süreci ---------------------------------------
+def test_playwright_yoksa_kurulum_komutu_doner(monkeypatch):
+    from yayin_paneli.toplayici import dis_surec
+    monkeypatch.setattr(dis_surec, "playwrightli_python", lambda **k: None)
+    sonuc = dis_surec.calistir("cek", "https://ornek", "/tmp/p", "/tmp/i")
+    assert sonuc["durum"] == "playwright_yok"
+    assert any("pip install playwright" in k for k in sonuc["komutlar"])
+
+
+def test_baglanti_yillari_her_zaman_2022den_baslar(tmp_path):
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+    import yayin_paneli.servis as servis
+    servis.depo = Depo(tmp_path / "yil.db")
+    servis.depo.ayar_yaz({"ilk_yil": 2026})      # ayar listeyi daraltmamalı
+    istemci = fastapi_testclient.TestClient(servis.uygulama)
+    yillar = [y["yil"] for y in istemci.get("/api/baglantilar").json()["yillar"]]
+    assert yillar[0] == 2022 and len(yillar) >= 6

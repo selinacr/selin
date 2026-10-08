@@ -424,9 +424,21 @@ function veriCekEkrani() {
 
   const sonYil = bag.yillar.length ? bag.yillar[bag.yillar.length - 1].yil : "";
   const otomatik = bag.tarayici_oturumu;
+  const playwright = bag.playwright;
 
   /* 1 — tek düğmeyle çekme (tarayıcı otomasyonu) */
-  const bolum1 = kart("1 · Tek düğmeyle çek",
+  const bolum1 = !playwright ? kart("1 · Tek düğmeyle çek — kurulum gerekiyor",
+    "Bu yol, panelin senin tarayıcı oturumunla WoS/Scopus'a girip Export'a basmasını " +
+    "sağlar. Çalışması için makinende Playwright kurulu olmalı. Terminal'i aç " +
+    "(Cmd + Boşluk → Terminal) ve şu iki satırı sırayla yapıştır:",
+    `<pre style="background:var(--surface-2);padding:12px;border-radius:10px;overflow:auto;font-size:13px">` +
+    `python3 -m pip install playwright\npython3 -m playwright install chromium</pre>` +
+    `<button class="dugme" id="playwright-dene">Kurulumu denetle</button>` +
+    `<p class="notu" id="cek-durumu"></p>`,
+    "İkinci komut Chromium tarayıcısını indirir, birkaç dakika sürebilir. Kurulum " +
+    "bitince «Kurulumu denetle» düğmesine bas. Bu adımı atlarsan 2. ve 3. bölümler " +
+    "yine sorunsuz çalışır.")
+  : kart("1 · Tek düğmeyle çek",
     otomatik
       ? "Tarayıcı oturumun kayıtlı. Düğmeye bastığında panel aramayı açar, Export'a " +
         "basar, dosyayı indirir ve analizi günceller."
@@ -675,6 +687,19 @@ function olaylariBagla() {
       return;
     }
 
+    if (olay.target.id === "playwright-dene") {
+      const durum = govde().querySelector("#cek-durumu");
+      durum.textContent = "Denetleniyor…";
+      DURUM.baglantilar = null;
+      try {
+        DURUM.baglantilar = await getir("/api/baglantilar?denetle=true");
+        durum.textContent = DURUM.baglantilar.playwright
+          ? "Playwright bulundu." : "Playwright hâlâ bulunamadı.";
+      } catch (hata) { durum.textContent = hata.message; }
+      ciz();
+      return;
+    }
+
     const cekDugmesi = olay.target.closest("button[data-cek]");
     if (cekDugmesi) {
       const kaynak = cekDugmesi.dataset.cek;
@@ -687,7 +712,9 @@ function olaylariBagla() {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ kaynak, yil }),
         });
-        durum.textContent = sonuc.mesaj || sonuc.durum;
+        durum.textContent = sonuc.durum === "playwright_yok"
+          ? "Playwright kurulu değil: " + (sonuc.komutlar || []).join("  •  ")
+          : (sonuc.mesaj || sonuc.durum);
         if (sonuc.durum === "tamam") { await durumuYenile(); await veriYenile(); return; }
       } catch (hata) {
         durum.textContent = hata.message;
