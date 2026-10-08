@@ -370,3 +370,12 @@ def test_baglanti_yillari_her_zaman_2022den_baslar(tmp_path):
     istemci = fastapi_testclient.TestClient(servis.uygulama)
     yillar = [y["yil"] for y in istemci.get("/api/baglantilar").json()["yillar"]]
     assert yillar[0] == 2022 and len(yillar) >= 6
+
+
+def test_dis_surec_yalitik_mod_kullanmaz():
+    """"-I" kullanıcı site-packages'ını kapatır; pip install --user ile kurulan
+    Playwright o modda görünmez, bu yüzden kullanılmamalı."""
+    from yayin_paneli.toplayici import dis_surec
+    kaynak = Path(dis_surec.__file__).read_text(encoding="utf-8")
+    calistirma = kaynak[kaynak.index("def calistir("):]
+    assert '"-I"' not in calistirma

@@ -126,8 +126,9 @@ def playwrightli_python(yeniden: bool = False) -> str | None:
             continue
         gorulen.add(aday)
         try:
-            sonuc = subprocess.run([aday, "-c", "import playwright"],
-                                   capture_output=True, text=True, timeout=8)
+            sonuc = subprocess.run(
+                [aday, "-c", "import playwright, playwright.sync_api"],
+                capture_output=True, text=True, timeout=12)
         except (OSError, subprocess.SubprocessError):
             continue
         if sonuc.returncode == 0:
@@ -157,10 +158,13 @@ def calistir(eylem: str, adres: str, profil: Path, indirme: Path,
         betik = Path(gecici) / "cek.py"
         betik.write_text(BETIK, encoding="utf-8")
         try:
+            # "-I" (yalıtık mod) kullanıcı site-packages'ını kapatır; kullanıcı
+            # Playwright'ı "pip install --user" ile kurduğunda bu modda görünmez.
+            # Betik kendi geçici klasöründe tek başına durduğu için yalıtıma gerek yok.
             sonuc = subprocess.run(
-                [yorumlayici, "-I", str(betik), eylem, adres, str(profil), str(indirme),
+                [yorumlayici, str(betik), eylem, adres, str(profil), str(indirme),
                  "1" if gorunur else "0"],
-                capture_output=True, text=True, timeout=zaman_asimi)
+                cwd=gecici, capture_output=True, text=True, timeout=zaman_asimi)
         except subprocess.TimeoutExpired:
             return {"durum": "hata", "mesaj": "İşlem zaman aşımına uğradı."}
     cikti = (sonuc.stdout or "").strip().splitlines()
@@ -169,5 +173,5 @@ def calistir(eylem: str, adres: str, profil: Path, indirme: Path,
             return json.loads(satir)
         except json.JSONDecodeError:
             continue
-    return {"durum": "hata",
+    return {"durum": "hata", "python": yorumlayici,
             "mesaj": (sonuc.stderr or "Betik çıktı üretmedi.")[-400:]}
